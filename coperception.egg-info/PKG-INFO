@@ -1,0 +1,16 @@
+Metadata-Version: 2.1
+Name: coperception
+Version: 0.0.11
+Summary: A library for collaborative perception.
+Home-page: https://ai4ce.github.io/
+Download-URL: https://github.com/coperception/coperception/archive/refs/tags/v0.0.1-alpha.tar.gz
+Author: AI4CE Lab @NYU
+Author-email: dm4524@nyu.edu
+License: apache-2.0
+Keywords: computer-vision,deep-learning,autonomous-driving,collaborative-learning,knowledge-distillation,communication-networks,multi-agent-learning,multi-agent-system,3d-object-detection,graph-learning,point-cloud-processing,v2x-communication,multi-agent-perception,3d-scene-understanding
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Libraries
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 3.7
+License-File: LICENSE

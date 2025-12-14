@@ -1,4 +1,12 @@
-__pycache__
-dist/
-site/
-*.egg-info/
+# Ignora cartelle pesanti
+omnet_sim/
+omnet_sim/results/
+coperception/data/
+__pycache__/
+*.log
+*.sca
+*.vec
+
+# Nuove aggiunte per sicurezza
+data/
+logs/
