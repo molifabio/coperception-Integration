@@ -1,0 +1,5 @@
+GPU number: 0
+command line: tools/det/train_codet.py -d /home/albert0/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/train --com mean --batch_size 1 --nworker 0 --lr 0.001 --nepoch 20 --log
+Namespace(auto_resume_path='', batch_size=1, com='mean', compress_level=0, data='/home/albert0/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/train', gnn_iter_times=3, kd_flag=0, kd_weight=100000, layer=3, log=True, logpath='', lr=0.001, nepoch=20, num_agent=6, nworker=0, only_v2i=0, pose_noise=0, resume='', resume_teacher='', rsu=0, visualization=True, warp_flag=0)
+
+epoch: 1, lr: 0.001	

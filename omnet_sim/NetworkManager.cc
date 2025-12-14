@@ -1,0 +1,113 @@
+#include <omnetpp.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <string.h>
+#include <iostream>
+#include <sstream>
+
+using namespace omnetpp;
+
+class NetworkManager : public cSimpleModule
+{
+  private:
+    int server_fd, client_fd;
+    int port;
+
+  protected:
+    virtual void initialize() override;
+    virtual void handleMessage(cMessage *msg) override;
+    virtual void finish() override;
+    
+    // Funzione per gestire la comunicazione
+    void runServerLoop();
+};
+
+Define_Module(NetworkManager);
+
+void NetworkManager::initialize()
+{
+    port = par("port");
+    
+    // 1. Creazione Socket
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        throw cRuntimeError("Socket creation failed");
+    }
+
+    // Opzioni per riutilizzare la porta subito se crasha
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt));
+
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(port);
+
+    // 2. Binding
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+        throw cRuntimeError("Bind failed. Is the port 5555 already in use?");
+    }
+
+    // 3. Listen
+    if (listen(server_fd, 1) < 0) {
+        throw cRuntimeError("Listen failed");
+    }
+
+    EV << "OMNeT++ Server listening on port " << port << "...\n";
+    EV << "Waiting for Python Client to connect...\n";
+    
+    // 4. Accept (Bloccante: OMNeT aspetta qui che tu lanci Python)
+    int addrlen = sizeof(address);
+    if ((client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+        throw cRuntimeError("Accept failed");
+    }
+    
+    EV << "Python Client connected! Starting simulation loop.\n";
+
+    // Entriamo nel loop di gestione
+    runServerLoop();
+}
+
+void NetworkManager::runServerLoop()
+{
+    char buffer[4096] = {0};
+    while (true) {
+        // Leggiamo dati da Python
+        memset(buffer, 0, 4096);
+        int valread = read(client_fd, buffer, 4096);
+        
+        if (valread <= 0) {
+            EV << "Client disconnected.\n";
+            break;
+        }
+
+        // Qui potresti parsare il JSON ricevuto in 'buffer' per vedere sender/receiver
+        // Esempio: "topic":"feature_tensor" ...
+        
+        // LOGICA DI SIMULAZIONE:
+        // Qui decidiamo il ritardo. Per ora mettiamo 50ms fissi + un po' di random
+        double simulated_delay = par("delay").doubleValue(); // 50ms
+        
+        // Creiamo la risposta JSON
+        // IMPORTANTE: Deve finire con \n perché il python usa readline()
+        std::stringstream response;
+        response << "{\"deliver\": true, \"delay_s\": " << simulated_delay << "}\n";
+        
+        std::string resp_str = response.str();
+        ::send(client_fd, resp_str.c_str(), resp_str.length(), 0);
+        
+        EV << "Processed packet. Simulated delay: " << simulated_delay << "s\n";
+    }
+}
+
+void NetworkManager::handleMessage(cMessage *msg)
+{
+    // Non usato in questo approccio sincrono socket-based
+    delete msg;
+}
+
+void NetworkManager::finish()
+{
+    close(client_fd);
+    close(server_fd);
+}

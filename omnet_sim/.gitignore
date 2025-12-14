@@ -1,0 +1,6 @@
+# Ignora file compilati e temporanei
+*.o
+omnet_sim
+opp_run
+Makefile
+out/
