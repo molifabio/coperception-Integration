@@ -5,6 +5,8 @@
 #include <string.h>
 #include <iostream>
 #include <sstream>
+#include <chrono>
+#include <algorithm>
 
 using namespace omnetpp;
 
@@ -13,6 +15,7 @@ class NetworkManager : public cSimpleModule
   private:
     int server_fd, client_fd;
     int port;
+    double packetLoss;
 
   protected:
     virtual void initialize() override;
@@ -28,6 +31,7 @@ Define_Module(NetworkManager);
 void NetworkManager::initialize()
 {
     port = par("port");
+    packetLoss = std::clamp(par("packetLoss").doubleValue(), 0.0, 1.0);
     
     // 1. Creazione Socket
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
@@ -72,31 +76,31 @@ void NetworkManager::runServerLoop()
 {
     char buffer[4096] = {0};
     while (true) {
-        // Leggiamo dati da Python
         memset(buffer, 0, 4096);
         int valread = read(client_fd, buffer, 4096);
-        
+
         if (valread <= 0) {
             EV << "Client disconnected.\n";
             break;
         }
 
-        // Qui potresti parsare il JSON ricevuto in 'buffer' per vedere sender/receiver
-        // Esempio: "topic":"feature_tensor" ...
-        
-        // LOGICA DI SIMULAZIONE:
-        // Qui decidiamo il ritardo. Per ora mettiamo 50ms fissi + un po' di random
-        double simulated_delay = par("delay").doubleValue(); // 50ms
-        
-        // Creiamo la risposta JSON
-        // IMPORTANTE: Deve finire con \n perché il python usa readline()
+        double simulated_delay = par("delay").doubleValue();
+        bool deliver = uniform(0, 1) > packetLoss;
+
         std::stringstream response;
-        response << "{\"deliver\": true, \"delay_s\": " << simulated_delay << "}\n";
-        
+        if (deliver) {
+            auto now = std::chrono::system_clock::now();
+            double ready_at_unix = std::chrono::duration_cast<std::chrono::duration<double>>(now.time_since_epoch()).count() + simulated_delay;
+            response << "{\"deliver\": true, \"delay_s\": " << simulated_delay
+                     << ", \"ready_at\": " << ready_at_unix << "}\n";
+            EV << "Processed packet. Simulated delay: " << simulated_delay << "s\n";
+        } else {
+            response << "{\"deliver\": false}\n";
+            EV << "Packet dropped (simulated loss).\n";
+        }
+
         std::string resp_str = response.str();
         ::send(client_fd, resp_str.c_str(), resp_str.length(), 0);
-        
-        EV << "Processed packet. Simulated delay: " << simulated_delay << "s\n";
     }
 }
 
