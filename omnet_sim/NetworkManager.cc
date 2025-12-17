@@ -31,7 +31,11 @@ Define_Module(NetworkManager);
 void NetworkManager::initialize()
 {
     port = par("port");
-    packetLoss = std::clamp(par("packetLoss").doubleValue(), 0.0, 1.0);
+    // Sostituzione manuale di std::clamp per compatibilità
+    double val = par("packetLoss").doubleValue();
+    if (val < 0.0) val = 0.0;
+    if (val > 1.0) val = 1.0;
+    packetLoss = val;
     
     // 1. Creazione Socket
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
