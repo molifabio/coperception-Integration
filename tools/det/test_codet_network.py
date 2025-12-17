@@ -149,15 +149,25 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge]):
             "dtype": str(payload.dtype)
         }
         decision = bridge.transmit(
-            topic="feature_tensor",
+            topic="feature_tensor",  # Nota: in det è feature_tensor
             sender=int(j),
             receiver=int(agent_idx),
             size_bytes=int(payload.element_size() * payload.numel()),
             metadata=meta,
         )
-        if not decision.get("deliver", True):
+
+        is_delivered = decision.get("deliver", True)
+        sim_delay = decision.get("delay_s", 0.0)
+
+        if is_delivered:
+            print(f"[OK]  {j} -> {agent_idx} | Delay: {sim_delay:.3f}s")
+        else:
+            print(f"[XXX] {j} -> {agent_idx} | PACKET LOST!")
+
+        if not is_delivered:
             return torch.zeros_like(payload)
-        delay = float(decision.get("delay_s", 0.0))
+
+        delay = float(sim_delay)
         OmnetBridge.apply_delay(delay)
         return original(b, j, agent_idx, local_com_mat, all_warp, device, size, trans_matrices)
 

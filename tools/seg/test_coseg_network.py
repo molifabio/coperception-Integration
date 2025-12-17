@@ -147,10 +147,6 @@ class OmnetBridge:
     def __del__(self) -> None:
         self._close()
 
-
-# ==============================================================================
-# PATCH FUNCTION: Collega SegModelBase al Bridge
-# ==============================================================================
 def patch_feature_transformation(bridge: Optional[OmnetBridge]):
     if bridge is None:
         return lambda: None
@@ -160,7 +156,6 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge]):
     original = descriptor.__func__ if isinstance(descriptor, staticmethod) else descriptor
 
     # Creiamo il wrapper che intercetta la chiamata
-    # Nota: Gli argomenti devono corrispondere ESATTAMENTE a quelli di SegModelBase.py
     def wrapped(b, j, agent_idx, local_com_mat, size, trans_matrices):
         payload = local_com_mat[b, j]
         
@@ -182,20 +177,22 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge]):
             metadata=meta,
         )
 
+        is_delivered = decision.get("deliver", True)
+        sim_delay = float(decision.get("delay_s", 0.0))
+
+        if is_delivered:
+            print(f"[OK]  {j} -> {agent_idx} | Delay: {sim_delay:.3f}s")
+        else:
+            print(f"[XXX] {j} -> {agent_idx} | PACKET LOST!")
+        # --- FINE DEBUG LOGGING ---
+
         # Se il pacchetto è perso, restituisce zero (feature vuote)
-        if not decision.get("deliver", True):
-            # Calcola la dimensione output attesa guardando cosa fa la funzione originale (affine_grid)
-            # Ma per semplicità, restituiamo un tensore di zeri della dimensione corretta se possibile,
-            # oppure lasciamo che l'originale fallisca se i dati sono critici.
-            # Qui proviamo a chiamare l'originale ma con payload azzerato per mantenere la coerenza dimensionale
-            # Oppure ritorniamo direttamente un tensor vuoto.
-            # La strategia più sicura per il "packet loss" è restituire zeri dopo la trasformazione:
+        if not is_delivered:
             res = original(b, j, agent_idx, local_com_mat, size, trans_matrices)
             return torch.zeros_like(res)
 
         # Applica il ritardo
-        delay = float(decision.get("delay_s", 0.0))
-        OmnetBridge.apply_delay(delay)
+        OmnetBridge.apply_delay(sim_delay)
 
         # Chiama la funzione originale per fare la trasformazione geometrica
         return original(b, j, agent_idx, local_com_mat, size, trans_matrices)
@@ -268,6 +265,7 @@ def run_test_logic(config, args):
     )
     print("Validation dataset size:", len(valset))
 
+    # Aggiunto map_location='cpu' per evitare errore CUDA su macchine CPU
     checkpoint = torch.load(args.resume, map_location='cpu')
 
     # build model
@@ -533,4 +531,3 @@ if __name__ == "__main__":
         if bridge is not None:
             bridge.close()
             print("OMNeT++ Bridge closed.")
-
