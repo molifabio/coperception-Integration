@@ -4,10 +4,14 @@
 simple NetworkManager
 {
     parameters:
-        int port = default(5555); // La porta deve corrispondere a quella Python
-	volatile double delay @unit(s) = default(0.05s);
-    double packetLoss = default(0); // Probabilità di perdita 0.1
-        @display("i=block/server");
+    int port = default(5555); // La porta deve corrispondere a quella Python
+    double packetLoss = default(0); // Probabilità di perdita
+	// Modello di ritardo: base + distanza*coeff + size*coeff + jitter
+	volatile double delayBase @unit(s) = default(0.05s);
+	volatile double delayPerMeter @unit(s) = default(0s);
+	volatile double delayPerByte @unit(s) = default(0s);
+	volatile double delayJitter @unit(s) = default(0s);
+    @display("i=block/server");
 }
 
 // Definizione della rete generale

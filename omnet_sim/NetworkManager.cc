@@ -5,6 +5,7 @@
 #include <string.h>
 #include <iostream>
 #include <sstream>
+#include <regex>
 #include <chrono>
 #include <algorithm>
 
@@ -16,6 +17,10 @@ class NetworkManager : public cSimpleModule
     int server_fd, client_fd;
     int port;
     double packetLoss;
+        double delayBase;
+        double delayPerMeter;
+        double delayJitter;
+        double delayPerByte;
 
   protected:
     virtual void initialize() override;
@@ -31,11 +36,14 @@ Define_Module(NetworkManager);
 void NetworkManager::initialize()
 {
     port = par("port");
-    // Sostituzione manuale di std::clamp per compatibilità
     double val = par("packetLoss").doubleValue();
     if (val < 0.0) val = 0.0;
     if (val > 1.0) val = 1.0;
     packetLoss = val;
+    delayBase = par("delayBase").doubleValue();
+    delayPerMeter = par("delayPerMeter").doubleValue();
+    delayJitter = par("delayJitter").doubleValue();
+    delayPerByte = par("delayPerByte").doubleValue();
     
     // 1. Creazione Socket
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
@@ -79,6 +87,17 @@ void NetworkManager::initialize()
 void NetworkManager::runServerLoop()
 {
     char buffer[4096] = {0};
+
+    auto extractDouble = [](const std::string &s, const std::string &key, double def) {
+        try {
+            std::regex rgx("\"" + key + "\"\\s*:\\s*([-+]?([0-9]*[.])?[0-9]+([eE][-+]?[0-9]+)?)");
+            std::smatch match;
+            if (std::regex_search(s, match, rgx) && match.size() > 1)
+                return std::stod(match[1]);
+        } catch (...) {}
+        return def;
+    };
+
     while (true) {
         memset(buffer, 0, 4096);
         int valread = read(client_fd, buffer, 4096);
@@ -88,7 +107,22 @@ void NetworkManager::runServerLoop()
             break;
         }
 
-        double simulated_delay = par("delay").doubleValue();
+        std::string payload(buffer, valread);
+
+        double distance_m = extractDouble(payload, "distance_m", -1.0);
+        double size_bytes = extractDouble(payload, "size_bytes", 0.0);
+
+        // Base delay + distance contribution + size contribution + jitter
+        double simulated_delay = delayBase;
+        if (distance_m > 0.0)
+            simulated_delay += distance_m * delayPerMeter;
+        if (size_bytes > 0.0)
+            simulated_delay += size_bytes * delayPerByte;
+        if (delayJitter != 0.0)
+            simulated_delay += uniform(-fabs(delayJitter), fabs(delayJitter));
+
+        if (simulated_delay < 0.0)
+            simulated_delay = 0.0;
         bool deliver = uniform(0, 1) > packetLoss;
 
         std::stringstream response;

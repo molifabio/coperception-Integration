@@ -139,15 +139,62 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge]):
     descriptor = DetModelBase.__dict__["feature_transformation"]
     original = descriptor.__func__ if isinstance(descriptor, staticmethod) else descriptor
 
+    def _extract_distance_m(tm_tensor, b, sender, receiver):
+        """Best-effort extraction of relative distance from trans_matrices.
+
+        trans_matrices is typically shaped (B, N, N, 4, 4) with homogeneous transforms.
+        We try both [b, receiver, sender] and [b, sender, receiver]; fall back to None.
+        """
+
+        if tm_tensor is None:
+            return None
+
+        try:
+            # Ensure CPU numpy for math
+            tm = tm_tensor.detach().cpu().numpy()
+        except Exception:
+            return None
+
+        if tm.ndim < 3:
+            return None
+
+        candidates = []
+        # Candidate order: receiver<-sender then sender<-receiver
+        if tm.ndim >= 5:
+            candidates.append((receiver, sender))
+            candidates.append((sender, receiver))
+            idx = [int(b)]
+        elif tm.ndim == 4:
+            # Possibly (N, N, 4, 4) with implicit batch 0
+            candidates.append((receiver, sender))
+            candidates.append((sender, receiver))
+            idx = []
+        else:
+            return None
+
+        for src, dst in candidates:
+            try:
+                m = tm[tuple(idx + [src, dst])]
+                if m.shape[-2:] != (4, 4):
+                    continue
+                t = m[:3, 3]
+                return float((t[0] ** 2 + t[1] ** 2 + t[2] ** 2) ** 0.5)
+            except Exception:
+                continue
+        return None
+
     def wrapped(b, j, agent_idx, local_com_mat, all_warp, device, size, trans_matrices):
         payload = local_com_mat[b, j]
+        distance_m = _extract_distance_m(trans_matrices, b, j, agent_idx)
         meta = {
             "batch": int(b),
             "sender": int(j),
             "receiver": int(agent_idx),
             "shape": list(payload.shape),
-            "dtype": str(payload.dtype)
+            "dtype": str(payload.dtype),
         }
+        if distance_m is not None:
+            meta["distance_m"] = float(distance_m)
         decision = bridge.transmit(
             topic="feature_tensor",  # Nota: in det è feature_tensor
             sender=int(j),
