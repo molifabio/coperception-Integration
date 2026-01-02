@@ -12,7 +12,7 @@ from coperception.models.det.base.DetModelBase import DetModelBase
 
 
 class OmnetBridge:
-    """Thin TCP client that exchanges JSON events with an OMNeT++ server."""
+    """Thin TCP client that exchanges JSON events with an OMNeT++ server (Asynchronous)."""
 
     def __init__(
         self,
@@ -31,11 +31,55 @@ class OmnetBridge:
         self.fail_open = fail_open
         self.enabled = enabled
         self._sock: Optional[socket.socket] = None
-        self._stream = None
+        self._buffer = ""
+        # Cache per i ritardi: Key="sender->receiver", Value=delay_s
+        self.latest_delays: Dict[str, float] = {}
+        
         if self.enabled:
             self._connect()
 
     # ------------------------------------------------------------------
+    def update_state(self):
+        """Legge dal socket in modo non bloccante e aggiorna i ritardi noti."""
+        if not self.enabled or not self._sock:
+            return
+
+        try:
+            while True:
+                try:
+                    chunk = self._sock.recv(4096)
+                    if not chunk:
+                        break # Connessione chiusa o errore
+                    self._buffer += chunk.decode("utf-8")
+                except BlockingIOError:
+                    # Nessun dato disponibile al momento
+                    break
+                except ConnectionResetError:
+                    self._close()
+                    return
+        except Exception as e:
+            print(f"[OmnetBridge] Error reading socket: {e}", file=sys.stderr)
+            return
+
+        # Processa le linee complete nel buffer
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            line = line.strip()
+            if not line:
+                continue
+            
+            try:
+                msg = json.loads(line)
+                # Ci aspettiamo: {"type": "received", "id": "0->1", "delay": 0.05, "deliver": true}
+                if msg.get("type") == "received":
+                    msg_id = msg.get("id", "")
+                    delay = float(msg.get("delay", 0.0))
+                    # Aggiorniamo il ritardo noto per questa coppia
+                    if msg_id:
+                        self.latest_delays[msg_id] = delay
+            except json.JSONDecodeError:
+                pass
+
     def transmit(
         self,
         *,
@@ -45,42 +89,41 @@ class OmnetBridge:
         size_bytes: int,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        # Se il bridge è disabilitato o non connesso, ritorna successo immediato (comportamento di default)
-        if not self.enabled or self._stream is None:
+        if not self.enabled or not self._sock:
             return {"deliver": True, "delay_s": self.default_delay}
 
-        # Costruisce il payload JSON da inviare al simulatore OMNeT++
+        # ID univoco per la coppia (usato per tracciare il ritardo)
+        msg_id = f"{sender}->{receiver}"
+
+        # Costruisce il comando "send" per OMNeT++
+        # Protocollo: { "type": "send", "src": "0", "dst": "1", "size": 1000, "id": "0->1" }
         payload = {
-            "topic": topic,
-            "sender": sender,
-            "receiver": receiver,
-            "size_bytes": size_bytes,
-            "timestamp": time.time(),
-            "metadata": metadata or {},
+            "type": "send",
+            "src": str(sender),
+            "dst": str(receiver),
+            "size": str(size_bytes),
+            "id": msg_id
         }
 
         try:
-            # Invia la richiesta e attende la risposta sincrona
             self._send_json(payload)
-            reply = self._recv_json()
         except OSError as exc:
-            # Gestione errori di connessione
             print(
                 f"[OmnetBridge] connection issue ({exc}); fail_open={self.fail_open}",
                 file=sys.stderr,
             )
             self._close()
-            # Se fail_open è True, continua a funzionare ignorando il simulatore
             if self.fail_open:
                 self.enabled = False
                 return {"deliver": True, "delay_s": self.default_delay}
-            # Altrimenti, simula un fallimento della consegna
             return {"deliver": False, "delay_s": 0.0}
 
-        # Estrae la decisione dal simulatore: consegnare o no? quanto ritardo?
-        deliver = bool(reply.get("deliver", True))
-        delay_s = float(reply.get("delay_s", reply.get("delay", self.default_delay)))
-        return {"deliver": deliver, "delay_s": max(0.0, delay_s)}
+        # Ritorna l'ultimo ritardo conosciuto per questa coppia
+        # Se non abbiamo ancora ricevuto nulla, usiamo default_delay
+        current_delay = self.latest_delays.get(msg_id, self.default_delay)
+        
+        # Per ora assumiamo deliver=True sempre, a meno che OMNeT non ci dica packet loss (non implementato nel ritorno asincrono ancora)
+        return {"deliver": True, "delay_s": max(0.0, current_delay)}
 
     def close(self) -> None:
         self._close()
@@ -89,9 +132,10 @@ class OmnetBridge:
     def _connect(self) -> None:
         try:
             sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
-            sock.settimeout(self.timeout)
+            # Imposta il socket come non bloccante
+            sock.setblocking(False)
             self._sock = sock
-            self._stream = sock.makefile("rwb")
+            self._buffer = ""
         except OSError as exc:
             print(
                 f"[OmnetBridge] unable to connect to {self.host}:{self.port} ({exc})",
@@ -102,27 +146,20 @@ class OmnetBridge:
             self.enabled = False
 
     def _send_json(self, msg: Dict[str, Any]) -> None:
-        if not self._stream:
-            raise ConnectionError("bridge stream unavailable")
+        if not self._sock:
+            raise ConnectionError("bridge socket unavailable")
         data = json.dumps(msg, separators=(",", ":")) + "\n"
-        self._stream.write(data.encode("utf-8"))
-        self._stream.flush()
-
-    def _recv_json(self) -> Dict[str, Any]:
-        if not self._stream:
-            raise ConnectionError("bridge stream unavailable")
-        line = self._stream.readline()
-        if line == b"":
-            raise ConnectionAbortedError("bridge connection closed")
-        return json.loads(line.decode("utf-8"))
+        # sendall potrebbe bloccare se il buffer è pieno, ma con piccoli JSON è raro.
+        # In modalità non bloccante, dovremmo gestire i byte inviati.
+        # Per semplicità usiamo sendall che su socket non bloccanti può lanciare errore se buffer pieno.
+        try:
+            self._sock.sendall(data.encode("utf-8"))
+        except BlockingIOError:
+            # Buffer pieno, droppiamo il pacchetto o riproviamo?
+            # Per questa simulazione, ignoriamo (best effort)
+            pass
 
     def _close(self) -> None:
-        if self._stream:
-            try:
-                self._stream.close()
-            except OSError:
-                pass
-            self._stream = None
         if self._sock:
             try:
                 self._sock.close()
@@ -194,6 +231,9 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge], dataset_framerat
         return None
 
     def wrapped(b, j, agent_idx, local_com_mat, all_warp, device, size, trans_matrices):
+        # Aggiorna lo stato della rete (legge eventuali messaggi in arrivo)
+        bridge.update_state()
+
         # Estrae il payload (feature map) che l'agente j vuole inviare all'agente agent_idx
         current_payload = local_com_mat[b, j]
         
