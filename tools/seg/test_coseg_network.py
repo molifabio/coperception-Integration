@@ -53,6 +53,7 @@ class OmnetBridge:
         if self.enabled:
             self._connect()
 
+    # ------------------------------------------------------------------
     def transmit(
         self,
         *,
@@ -62,9 +63,11 @@ class OmnetBridge:
         size_bytes: int,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        # Se il bridge è disabilitato o non connesso, ritorna successo immediato (comportamento di default)
         if not self.enabled or self._stream is None:
             return {"deliver": True, "delay_s": self.default_delay}
 
+        # Costruisce il payload JSON da inviare al simulatore OMNeT++
         payload = {
             "topic": topic,
             "sender": sender,
@@ -75,31 +78,32 @@ class OmnetBridge:
         }
 
         try:
+            # Invia la richiesta e attende la risposta sincrona
             self._send_json(payload)
             reply = self._recv_json()
         except OSError as exc:
+            # Gestione errori di connessione
             print(
                 f"[OmnetBridge] connection issue ({exc}); fail_open={self.fail_open}",
                 file=sys.stderr,
             )
             self._close()
+            # Se fail_open è True, continua a funzionare ignorando il simulatore
             if self.fail_open:
                 self.enabled = False
                 return {"deliver": True, "delay_s": self.default_delay}
+            # Altrimenti, simula un fallimento della consegna
             return {"deliver": False, "delay_s": 0.0}
 
+        # Estrae la decisione dal simulatore: consegnare o no? quanto ritardo?
         deliver = bool(reply.get("deliver", True))
         delay_s = float(reply.get("delay_s", reply.get("delay", self.default_delay)))
         return {"deliver": deliver, "delay_s": max(0.0, delay_s)}
 
-    @staticmethod
-    def apply_delay(delay_s: float) -> None:
-        if delay_s > 0:
-            time.sleep(delay_s)
-
     def close(self) -> None:
         self._close()
 
+    # ------------------------------------------------------------------
     def _connect(self) -> None:
         try:
             sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
@@ -147,13 +151,26 @@ class OmnetBridge:
     def __del__(self) -> None:
         self._close()
 
-def patch_feature_transformation(bridge: Optional[OmnetBridge]):
+
+def patch_feature_transformation(bridge: Optional[OmnetBridge], dataset_framerate: float = 5.0):
+    # Se non c'è un bridge attivo, non fare nulla (nessuna patch)
     if bridge is None:
         return lambda: None
 
-    # Individuiamo la funzione originale nella classe base della segmentazione
+    # Salva il metodo originale per poterlo chiamare o ripristinare dopo
     descriptor = SegModelBase.__dict__["feature_transformation"]
     original = descriptor.__func__ if isinstance(descriptor, staticmethod) else descriptor
+
+    # Buffer per memorizzare la storia delle feature map: { (batch_idx, agent_id): [payload_t0, payload_t1, ...] }
+    # Usiamo una lista semplice come coda.
+    feature_buffer: Dict[str, list] = {}
+    
+    # Lunghezza massima del buffer (in secondi simulati). 
+    # Es. 2 secondi di storia a 5Hz = 10 frame.
+    # Questo buffer serve a simulare la "memoria" dei dati passati.
+    # Se la rete ha un ritardo di 0.4s, dobbiamo poter recuperare il dato generato 0.4s fa.
+    MAX_BUFFER_SEC = 2.0
+    MAX_BUFFER_LEN = int(MAX_BUFFER_SEC * dataset_framerate)
 
     def _extract_distance_m(tm_tensor, b, sender, receiver):
         """Best-effort extraction of relative distance from trans_matrices.
@@ -199,50 +216,114 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge]):
                 continue
         return None
 
-    # Creiamo il wrapper che intercetta la chiamata
     def wrapped(b, j, agent_idx, local_com_mat, size, trans_matrices):
-        payload = local_com_mat[b, j]
+        # Estrae il payload (feature map) che l'agente j vuole inviare all'agente agent_idx
+        current_payload = local_com_mat[b, j]
+        
+        # --- GESTIONE BUFFER ---
+        # Chiave univoca per identificare la coda di questo specifico agente in questo batch
+        # Nota: 'b' è l'indice nel batch corrente, non un ID globale, ma va bene perché il buffer si svuota/riempie sequenzialmente
+        # Tuttavia, per sicurezza in test multi-epoch, sarebbe meglio pulire il buffer, ma qui assumiamo inferenza sequenziale.
+        buffer_key = f"b{b}_ag{j}"
+        
+        if buffer_key not in feature_buffer:
+            feature_buffer[buffer_key] = []
+        
+        # Aggiungi il payload corrente alla testa della lista (il più recente è l'ultimo)
+        # Cloniamo il tensore per evitare che venga sovrascritto in-place da operazioni successive
+        # OPTIMIZATION: Move to CPU to save VRAM
+        feature_buffer[buffer_key].append(current_payload.clone().detach().cpu())
+        
+        # Mantieni il buffer di dimensione fissa
+        if len(feature_buffer[buffer_key]) > MAX_BUFFER_LEN:
+            feature_buffer[buffer_key].pop(0) # Rimuovi il più vecchio
+            
+        # -----------------------
+
+        # Calcola la distanza fisica tra i due agenti per passarla al simulatore
         distance_m = _extract_distance_m(trans_matrices, b, j, agent_idx)
         
-        # Metadata per il server OMNeT++
+        # Prepara i metadati per la richiesta al simulatore
         meta = {
             "batch": int(b),
             "sender": int(j),
             "receiver": int(agent_idx),
-            "shape": list(payload.shape),
-            "dtype": str(payload.dtype)
+            "shape": list(current_payload.shape),
+            "dtype": str(current_payload.dtype),
         }
         if distance_m is not None:
             meta["distance_m"] = float(distance_m)
-        
-        # Chiede a OMNeT++ cosa fare
+            
+        # Chiede al bridge OMNeT++ se il pacchetto può essere consegnato e con che ritardo
         decision = bridge.transmit(
-            topic="feature_tensor_seg",
+            topic="feature_tensor_seg",  # Nota: in seg è feature_tensor_seg
             sender=int(j),
             receiver=int(agent_idx),
-            size_bytes=int(payload.element_size() * payload.numel()),
+            size_bytes=int(current_payload.element_size() * current_payload.numel()), # Calcola dimensione in byte
             metadata=meta,
         )
 
         is_delivered = decision.get("deliver", True)
-        sim_delay = float(decision.get("delay_s", 0.0))
+        sim_delay = decision.get("delay_s", 0.0)
 
-        if is_delivered:
-            print(f"[OK]  {j} -> {agent_idx} | Delay: {sim_delay:.3f}s")
-        else:
-            print(f"[XXX] {j} -> {agent_idx} | PACKET LOST!")
-        # --- FINE DEBUG LOGGING ---
+        # Calcolo del frame lag
+        # Quanti frame indietro nel tempo dobbiamo andare?
+        # Lag = Ritardo (s) * Framerate (Hz)
+        # Esempio: Ritardo 0.4s * 5Hz = 2 frame di lag.
+        frames_lag = int(round(sim_delay * dataset_framerate))
+        
+        final_payload = None
+        log_msg = ""
+        
+        # Infer device from local_com_mat
+        device = local_com_mat.device
 
-        # Se il pacchetto è perso, restituisce zero (feature vuote)
         if not is_delivered:
-            res = original(b, j, agent_idx, local_com_mat, size, trans_matrices)
-            return torch.zeros_like(res)
+            # Caso 1: Pacchetto perso -> Zeri
+            final_payload = torch.zeros_like(current_payload)
+            log_msg = f"[XXX] {j} -> {agent_idx} | PACKET LOST"
+        elif frames_lag == 0:
+            # Caso 2: Ritardo trascurabile -> Usa dato corrente
+            final_payload = current_payload
+            log_msg = f"[OK]  {j} -> {agent_idx} | Delay: {sim_delay:.3f}s (Live)"
+        else:
+            # Caso 3: Ritardo significativo -> Recupera dal buffer
+            buffer = feature_buffer[buffer_key]
+            # L'indice -1 è il corrente (lag 0), -2 è lag 1, ecc.
+            # Quindi index = -1 - frames_lag
+            target_idx = -1 - frames_lag
+            
+            # Controlla se abbiamo abbastanza storia
+            if abs(target_idx) <= len(buffer):
+                # OPTIMIZATION: Move back to device
+                final_payload = buffer[target_idx].to(device)
+                log_msg = f"[OLD] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames"
+            else:
+                # Ritardo eccessivo, buffer non sufficiente -> Consideriamo perso o usiamo il più vecchio
+                # Qui scegliamo di usare il più vecchio disponibile (best effort)
+                final_payload = buffer[0].to(device)
+                log_msg = f"[OLD!] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames (Buffer Underflow, using oldest)"
 
-        # Applica il ritardo
-        OmnetBridge.apply_delay(sim_delay)
+        print(log_msg)
 
-        # Chiama la funzione originale per fare la trasformazione geometrica
-        return original(b, j, agent_idx, local_com_mat, size, trans_matrices)
+        # OPTIMIZATION: Inline feature_transformation logic to avoid cloning local_com_mat
+        # We reimplement SegModelBase.feature_transformation here using final_payload directly.
+        
+        nb_agent = torch.unsqueeze(final_payload, 0)
+        
+        tfm_ji = trans_matrices[b, j, agent_idx]
+        M = (
+            torch.hstack((tfm_ji[:2, :2], -tfm_ji[:2, 3:4])).float().unsqueeze(0)
+        )
+        M = M.to(device)
+        
+        # Ensure mask is on the same device as M
+        mask = torch.tensor([[[1, 1, 4 / 128], [1, 1, 4 / 128]]], device=M.device)
+        M *= mask
+        
+        grid = F.affine_grid(M, size=torch.Size(size))
+        warp_feat = F.grid_sample(nb_agent, grid).squeeze()
+        return warp_feat
 
     # Applica la patch
     SegModelBase.feature_transformation = staticmethod(wrapped)

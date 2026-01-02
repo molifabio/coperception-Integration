@@ -5,7 +5,8 @@ import sys
 import time
 from typing import Any, Dict, Optional
 
-import torch
+import torch # type: ignore
+import torch.nn.functional as F # type: ignore
 
 import test_codet
 from coperception.models.det.base.DetModelBase import DetModelBase
@@ -208,7 +209,8 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge], dataset_framerat
         
         # Aggiungi il payload corrente alla testa della lista (il più recente è l'ultimo)
         # Cloniamo il tensore per evitare che venga sovrascritto in-place da operazioni successive
-        feature_buffer[buffer_key].append(current_payload.clone().detach())
+        # OPTIMIZATION: Move to CPU to save VRAM
+        feature_buffer[buffer_key].append(current_payload.clone().detach().cpu())
         
         # Mantieni il buffer di dimensione fissa
         if len(feature_buffer[buffer_key]) > MAX_BUFFER_LEN:
@@ -268,24 +270,35 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge], dataset_framerat
             
             # Controlla se abbiamo abbastanza storia
             if abs(target_idx) <= len(buffer):
-                final_payload = buffer[target_idx]
+                # OPTIMIZATION: Move back to device
+                final_payload = buffer[target_idx].to(device)
                 log_msg = f"[OLD] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames"
             else:
                 # Ritardo eccessivo, buffer non sufficiente -> Consideriamo perso o usiamo il più vecchio
                 # Qui scegliamo di usare il più vecchio disponibile (best effort)
-                final_payload = buffer[0] 
+                final_payload = buffer[0].to(device)
                 log_msg = f"[OLD!] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames (Buffer Underflow, using oldest)"
 
         print(log_msg)
 
-        # Creiamo una copia shallow della matrice di comunicazione per non sporcare quella vera per altri agenti
-        # local_com_mat è un tensore [Batch, Agent, Channels, H, W]
-        # Non possiamo modificare il tensore originale in-place facilmente senza side effects.
-        # Soluzione: Passiamo una local_com_mat "finta" che ha il payload modificato solo nella posizione [b, j]
-        local_com_mat_patched = local_com_mat.clone()
-        local_com_mat_patched[b, j] = final_payload
+        # OPTIMIZATION: Inline feature_transformation logic to avoid cloning local_com_mat
+        # We reimplement DetModelBase.feature_transformation here using final_payload directly.
         
-        return original(b, j, agent_idx, local_com_mat_patched, all_warp, device, size, trans_matrices)
+        nb_agent = torch.unsqueeze(final_payload, 0)
+        
+        tfm_ji = trans_matrices[b, j, agent_idx]
+        M = (
+            torch.hstack((tfm_ji[:2, :2], -tfm_ji[:2, 3:4])).float().unsqueeze(0)
+        )
+        
+        # Ensure mask is on the same device as M
+        mask = torch.tensor([[[1, 1, 4 / 128], [1, 1, 4 / 128]]], device=M.device)
+        M *= mask
+        
+        grid = F.affine_grid(M, size=torch.Size(size))
+        warp_feat = F.grid_sample(nb_agent, grid).squeeze()
+        
+        return warp_feat
 
     # Sostituisce il metodo statico originale con la versione wrappata (Monkey Patching)
     DetModelBase.feature_transformation = staticmethod(wrapped)
