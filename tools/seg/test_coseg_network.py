@@ -641,6 +641,12 @@ if __name__ == "__main__":
     parser.add_argument("--network_default_delay", default=0.0, type=float, help="Fallback latency")
     parser.add_argument("--network_fail_open", action="store_true", help="Continue if bridge fails")
     parser.add_argument("--network_disable", action="store_true", help="Run without OMNeT++")
+    parser.add_argument(
+        "--dataset_framerate",
+        default=5.0,
+        type=float,
+        help="Framerate of the dataset in Hz (default: 5.0). Used to calculate frame lag from network delay.",
+    )
 
     torch.multiprocessing.set_sharing_strategy("file_system")
 
@@ -664,7 +670,7 @@ if __name__ == "__main__":
             )
         
         # Applica la patch al modello di segmentazione
-        restore_hook = patch_feature_transformation(bridge)
+        restore_hook = patch_feature_transformation(bridge, dataset_framerate=args.dataset_framerate)
         
         config = Config("train")
         run_test_logic(config, args)
