@@ -147,6 +147,8 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge], dataset_framerat
     # Buffer per memorizzare la storia delle feature map: { (batch_idx, agent_id): [payload_t0, payload_t1, ...] }
     # Usiamo una lista semplice come coda.
     feature_buffer: Dict[str, list] = {}
+    # Tracker per evitare duplicati nello stesso step temporale
+    update_tracker: Dict[str, dict] = {}
     
     # Lunghezza massima del buffer (in secondi simulati). 
     # Es. 2 secondi di storia a 5Hz = 10 frame.
@@ -204,17 +206,31 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge], dataset_framerat
         # Tuttavia, per sicurezza in test multi-epoch, sarebbe meglio pulire il buffer, ma qui assumiamo inferenza sequenziale.
         buffer_key = f"b{b}_ag{j}"
         
-        if buffer_key not in feature_buffer:
-            feature_buffer[buffer_key] = []
+        # Logic to avoid duplicate inserts for the same timestep
+        # We use the tensor ID and a checksum to identify unique frames
+        mat_id = id(local_com_mat)
+        curr_checksum = float(current_payload.sum().item()) # Simple checksum
         
-        # Aggiungi il payload corrente alla testa della lista (il più recente è l'ultimo)
-        # Cloniamo il tensore per evitare che venga sovrascritto in-place da operazioni successive
-        # OPTIMIZATION: Move to CPU to save VRAM
-        feature_buffer[buffer_key].append(current_payload.clone().detach().cpu())
+        should_append = True
+        if buffer_key in update_tracker:
+            last_info = update_tracker[buffer_key]
+            # If same tensor object AND same content checksum -> It's a duplicate call for the same step
+            if last_info['mat_id'] == mat_id and abs(last_info['checksum'] - curr_checksum) < 1e-4:
+                should_append = False
         
-        # Mantieni il buffer di dimensione fissa
-        if len(feature_buffer[buffer_key]) > MAX_BUFFER_LEN:
-            feature_buffer[buffer_key].pop(0) # Rimuovi il più vecchio
+        if should_append:
+            if buffer_key not in feature_buffer:
+                feature_buffer[buffer_key] = []
+            
+            # OPTIMIZATION: Move to CPU to save VRAM
+            feature_buffer[buffer_key].append(current_payload.clone().detach().cpu())
+            
+            # Update tracker
+            update_tracker[buffer_key] = {'mat_id': mat_id, 'checksum': curr_checksum}
+            
+            # Mantieni il buffer di dimensione fissa
+            if len(feature_buffer[buffer_key]) > MAX_BUFFER_LEN:
+                feature_buffer[buffer_key].pop(0) # Rimuovi il più vecchio
             
         # -----------------------
 
