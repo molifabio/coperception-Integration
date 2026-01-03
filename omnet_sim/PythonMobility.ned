@@ -1,4 +1,4 @@
-package omnet_sim;
+// package omnet_sim;
 
 import inet.mobility.base.MovingMobilityBase;
 

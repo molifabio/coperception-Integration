@@ -10,7 +10,7 @@ void PythonMobility::initialize(int stage)
         lastPosition.x = par("initialX");
         lastPosition.y = par("initialY");
         lastPosition.z = par("initialZ");
-        lastSpeed = Coord(0, 0, 0);
+        lastVelocity = Coord(0, 0, 0);
         lastOrientation = Quaternion(0, 0, 0, 1); // Identity
     }
 }
