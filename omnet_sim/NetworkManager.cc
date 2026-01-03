@@ -198,6 +198,11 @@ void NetworkManager::processCommand(const std::string& cmd)
     if (type == "send") {
         std::string srcId = getVal("src");
         std::string dstId = getVal("dst");
+
+        if (srcId.empty() || dstId.empty()) {
+             EV << "NetworkManager: Missing src or dst in send command: " << cmd << "\n";
+             return;
+        }
         std::string sizeStr = getVal("size");
         std::string msgId = getVal("id");
         

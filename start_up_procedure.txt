@@ -19,7 +19,8 @@ python test_codet_network.py \
   --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth \
   --logpath ~/coperception/coperception-Integration/logs \
   --network_host 127.0.0.1 \
-  --network_port 5555
+  --network_port 5555 \
+  --scene_id 29        #opzionale, se omesso esegue tutto
 
 
 cmd 2 (Client, seg):
@@ -32,4 +33,5 @@ python test_coseg_network.py \
   --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/seg/disco/no_rsu/epoch_100.pth \
   --logpath ~/coperception/coperception-Integration/logs_seg \
   --network_host 127.0.0.1 \
-  --network_port 5555
+  --network_port 5555 \
+  --scene_id 29

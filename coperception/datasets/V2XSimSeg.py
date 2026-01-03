@@ -21,6 +21,7 @@ class V2XSimSeg(Dataset):
         bound=None,
         kd_flag=False,
         rsu=False,
+        scene_id=None,
     ):
         """
         This dataloader loads single sequence for a keyframe, and is not designed for computing the
@@ -48,6 +49,7 @@ class V2XSimSeg(Dataset):
         self.bound = bound
         self.kd_flag = kd_flag
         self.rsu = rsu
+        self.scene_id = scene_id
 
         if dataset_roots is None:
             raise ValueError(
@@ -61,6 +63,11 @@ class V2XSimSeg(Dataset):
         for dataset_root in self.dataset_roots:
             # sort directories
             dir_list = [d.split("_") for d in os.listdir(dataset_root)]
+            
+            # Filter by scene_id if provided
+            if self.scene_id is not None:
+                dir_list = [x for x in dir_list if int(x[0]) == self.scene_id]
+
             dir_list.sort(key=lambda x: (int(x[0]), int(x[1])))
             self.seq_scenes.append(
                 [int(s[0]) for s in dir_list]

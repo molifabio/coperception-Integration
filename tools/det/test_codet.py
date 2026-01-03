@@ -73,6 +73,7 @@ def main(args):
         bound="upperbound" if args.com == "upperbound" else "lowerbound",
         kd_flag=args.kd_flag,
         rsu=args.rsu,
+        scene_id=args.scene_id,
     )
     validation_data_loader = DataLoader(
         validation_dataset, batch_size=1, shuffle=False, num_workers=num_workers
@@ -357,7 +358,7 @@ def main(args):
                     sns.heatmap(one_agent_edge[kk].cpu())
                     plt.savefig(savename_edge, dpi=500)
                     plt.clf()
-                    plt.close(0)
+                    plt.close('all')
 
             # == tracking ==
             if args.tracking:
@@ -398,6 +399,9 @@ def main(args):
                 result[k][0][0][0]["pred"] = pred_restore
                 result[k][0][0][0]["score"] = score_restore
                 result[k][0][0][0]["selected_idx"] = selected_idx_restore
+        
+        # Ensure all figures are closed at the end of each frame processing
+        plt.close('all')
 
         print("Validation scene {}, at frame {}".format(seq_name, idx))
         print("Takes {} s\n".format(str(time.time() - t)))
@@ -578,6 +582,12 @@ if __name__ == "__main__":
         default=0,
         type=int,
         help="1: only v2i, 0: v2v and v2i",
+    )
+    parser.add_argument(
+        "--scene_id",
+        default=None,
+        type=int,
+        help="Specify a single scene ID to run (e.g. 29)",
     )
 
     torch.multiprocessing.set_sharing_strategy("file_system")

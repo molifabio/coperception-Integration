@@ -47,6 +47,11 @@ void CoPerceptionApp::sendDataPacket(const char* destAddrStr, long sizeBytes, co
         return;
     }
 
+    if (destAddr.isUnspecified()) {
+        EV << "CoPerceptionApp: Resolved address is unspecified for: " << destAddrStr << "\n";
+        return;
+    }
+
     // Fragment loop
     while (remainingBytes > 0) {
         long currentChunkSize = (remainingBytes > maxChunkSize) ? maxChunkSize : remainingBytes;

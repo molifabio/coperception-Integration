@@ -67,6 +67,7 @@ def main(config, args):
         com=args.com,
         bound="upperbound" if args.com == "upperbound" else "lowerbound",
         rsu=args.rsu,
+        scene_id=args.scene_id,
     )
     valloader = DataLoader(
         valset, batch_size=batch_size, shuffle=False, num_workers=num_workers
