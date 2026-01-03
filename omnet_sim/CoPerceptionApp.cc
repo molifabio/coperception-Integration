@@ -32,26 +32,40 @@ void CoPerceptionApp::handleMessageWhenUp(cMessage *msg)
 
 void CoPerceptionApp::sendDataPacket(const char* destAddrStr, long sizeBytes, const char* msgId)
 {
-    // Create packet
-    Packet *packet = new Packet(msgId);
-    
-    // Add dummy payload
-    const auto& payload = makeShared<ByteCountChunk>(B(sizeBytes));
-    packet->insertAtBack(payload);
+    Enter_Method_Silent();
 
-    // Resolve destination
+    long maxChunkSize = 60000; // 60KB safe limit (UDP max is 65535 - headers)
+    long remainingBytes = sizeBytes;
+    int fragmentCount = 0;
+
+    // Resolve destination once
     L3Address destAddr;
     try {
         destAddr = L3AddressResolver().resolve(destAddrStr);
     } catch (std::exception& e) {
         EV << "CoPerceptionApp: Could not resolve address: " << destAddrStr << "\n";
-        delete packet;
         return;
     }
 
-    // Send via UdpSocket
-    EV << "CoPerceptionApp: Sending packet " << msgId << " to " << destAddrStr << " (" << destAddr << ")\n";
-    socket.sendTo(packet, destAddr, destPort);
+    // Fragment loop
+    while (remainingBytes > 0) {
+        long currentChunkSize = (remainingBytes > maxChunkSize) ? maxChunkSize : remainingBytes;
+        
+        // Create packet
+        Packet *packet = new Packet(msgId);
+        
+        // Add dummy payload
+        const auto& payload = makeShared<ByteCountChunk>(B(currentChunkSize));
+        packet->insertAtBack(payload);
+
+        // Send via UdpSocket
+        socket.sendTo(packet, destAddr, destPort);
+
+        remainingBytes -= currentChunkSize;
+        fragmentCount++;
+    }
+    
+    EV << "CoPerceptionApp: Sent " << msgId << " in " << fragmentCount << " fragments to " << destAddrStr << "\n";
 }
 
 void CoPerceptionApp::socketDataArrived(UdpSocket *socket, Packet *packet)

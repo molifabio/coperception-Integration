@@ -5,7 +5,7 @@ import sys
 import time
 from typing import Any, Dict, Optional
 
-import torch
+import torch # type: ignore
 
 import test_codet
 from coperception.models.det.base.DetModelBase import DetModelBase

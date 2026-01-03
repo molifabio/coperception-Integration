@@ -8,6 +8,7 @@
 #include <sstream>
 #include <regex>
 #include <fcntl.h>
+#include <errno.h>
 
 Define_Module(NetworkManager);
 
@@ -26,7 +27,7 @@ void NetworkManager::initialize()
     int addrlen = sizeof(address);
     // Note: server_fd is blocking by default in setupServerSocket now (see change below)
     if ((client_fd = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
-        throw cRuntimeError("Accept failed");
+        throw cRuntimeError("Accept failed: %s", strerror(errno));
     }
 
     std::cout << "NetworkManager: Python connected! Starting simulation." << std::endl;
@@ -74,8 +75,8 @@ void NetworkManager::discoverApps()
 
 void NetworkManager::setupServerSocket()
 {
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        throw cRuntimeError("Socket creation failed");
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        throw cRuntimeError("Socket creation failed: %s", strerror(errno));
     }
 
     int opt = 1;
@@ -91,11 +92,11 @@ void NetworkManager::setupServerSocket()
     address.sin_port = htons(port);
 
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-        throw cRuntimeError("Bind failed");
+        throw cRuntimeError("Bind failed: %s", strerror(errno));
     }
 
     if (listen(server_fd, 1) < 0) {
-        throw cRuntimeError("Listen failed");
+        throw cRuntimeError("Listen failed: %s", strerror(errno));
     }
 
     // Print to std::cout so it's visible in Cmdenv console immediately

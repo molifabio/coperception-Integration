@@ -1,0 +1,35 @@
+cmd 1 (Server):
+
+conda activate coperception
+cd ~/omnetpp-6.0.3
+source setenv
+cd ~/coperception/omnet_sim
+./omnet_sim -n ".:../../../inet/src" -u Cmdenv
+
+#Il server a questo punto dovrebbe essere in attesa
+
+
+cmd 2 (Client, det):
+
+conda activate coperception
+cd ~/coperception/coperception-Integration/tools/det
+python test_codet_network.py \
+  --com disco \
+  --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test \
+  --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth \
+  --logpath ~/coperception/coperception-Integration/logs \
+  --network_host 127.0.0.1 \
+  --network_port 5555
+
+
+cmd 2 (Client, seg):
+
+conda activate coperception
+cd ~/coperception/coperception-Integration/tools/seg
+python test_coseg_network.py \
+  --com disco \
+  --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-seg/test \
+  --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/seg/disco/no_rsu/epoch_100.pth \
+  --logpath ~/coperception/coperception-Integration/logs_seg \
+  --network_host 127.0.0.1 \
+  --network_port 5555

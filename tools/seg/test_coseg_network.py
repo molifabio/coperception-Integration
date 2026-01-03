@@ -147,13 +147,21 @@ class OmnetBridge:
     def __del__(self) -> None:
         self._close()
 
-def patch_feature_transformation(bridge: Optional[OmnetBridge]):
+def patch_feature_transformation(bridge: Optional[OmnetBridge], dataset_framerate: float = 5.0):
     if bridge is None:
         return lambda: None
 
     # Individuiamo la funzione originale nella classe base della segmentazione
     descriptor = SegModelBase.__dict__["feature_transformation"]
     original = descriptor.__func__ if isinstance(descriptor, staticmethod) else descriptor
+
+    # Buffer per memorizzare la storia delle feature map: { (batch_idx, agent_id): [payload_t0, payload_t1, ...] }
+    feature_buffer: Dict[str, list] = {}
+    # Tracker per evitare duplicati nello stesso step temporale
+    update_tracker: Dict[str, dict] = {}
+    
+    MAX_BUFFER_SEC = 2.0
+    MAX_BUFFER_LEN = int(MAX_BUFFER_SEC * dataset_framerate)
 
     def _extract_distance_m(tm_tensor, b, sender, receiver):
         """Best-effort extraction of relative distance from trans_matrices.
@@ -201,7 +209,34 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge]):
 
     # Creiamo il wrapper che intercetta la chiamata
     def wrapped(b, j, agent_idx, local_com_mat, size, trans_matrices):
-        payload = local_com_mat[b, j]
+        current_payload = local_com_mat[b, j]
+        
+        # --- GESTIONE BUFFER ---
+        buffer_key = f"b{b}_ag{j}"
+        
+        mat_id = id(local_com_mat)
+        curr_checksum = float(current_payload.sum().item())
+        
+        should_append = True
+        if buffer_key in update_tracker:
+            last_info = update_tracker[buffer_key]
+            if last_info['mat_id'] == mat_id and abs(last_info['checksum'] - curr_checksum) < 1e-4:
+                should_append = False
+        
+        if should_append:
+            if buffer_key not in feature_buffer:
+                feature_buffer[buffer_key] = []
+            
+            # OPTIMIZATION: Move to CPU to save VRAM
+            feature_buffer[buffer_key].append(current_payload.clone().detach().cpu())
+            
+            # Update tracker
+            update_tracker[buffer_key] = {'mat_id': mat_id, 'checksum': curr_checksum}
+            
+            if len(feature_buffer[buffer_key]) > MAX_BUFFER_LEN:
+                feature_buffer[buffer_key].pop(0)
+        # -----------------------
+
         distance_m = _extract_distance_m(trans_matrices, b, j, agent_idx)
         
         # Metadata per il server OMNeT++
@@ -209,8 +244,8 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge]):
             "batch": int(b),
             "sender": int(j),
             "receiver": int(agent_idx),
-            "shape": list(payload.shape),
-            "dtype": str(payload.dtype)
+            "shape": list(current_payload.shape),
+            "dtype": str(current_payload.dtype)
         }
         if distance_m is not None:
             meta["distance_m"] = float(distance_m)
@@ -220,29 +255,54 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge]):
             topic="feature_tensor_seg",
             sender=int(j),
             receiver=int(agent_idx),
-            size_bytes=int(payload.element_size() * payload.numel()),
+            size_bytes=int(current_payload.element_size() * current_payload.numel()),
             metadata=meta,
         )
 
         is_delivered = decision.get("deliver", True)
         sim_delay = float(decision.get("delay_s", 0.0))
+        
+        frames_lag = int(round(sim_delay * dataset_framerate))
+        
+        final_payload = None
+        log_msg = ""
 
-        if is_delivered:
-            print(f"[OK]  {j} -> {agent_idx} | Delay: {sim_delay:.3f}s")
-        else:
-            print(f"[XXX] {j} -> {agent_idx} | PACKET LOST!")
-        # --- FINE DEBUG LOGGING ---
-
-        # Se il pacchetto è perso, restituisce zero (feature vuote)
         if not is_delivered:
-            res = original(b, j, agent_idx, local_com_mat, size, trans_matrices)
-            return torch.zeros_like(res)
+            final_payload = torch.zeros_like(current_payload)
+            log_msg = f"[XXX] {j} -> {agent_idx} | PACKET LOST"
+        elif frames_lag == 0:
+            final_payload = current_payload
+            log_msg = f"[OK]  {j} -> {agent_idx} | Delay: {sim_delay:.3f}s (Live)"
+        else:
+            buffer = feature_buffer[buffer_key]
+            target_idx = -1 - frames_lag
+            
+            if abs(target_idx) <= len(buffer):
+                final_payload = buffer[target_idx].to(current_payload.device)
+                log_msg = f"[OLD] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames"
+            else:
+                final_payload = buffer[0].to(current_payload.device)
+                log_msg = f"[OLD!] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames (Buffer Underflow, using oldest)"
 
-        # Applica il ritardo
-        OmnetBridge.apply_delay(sim_delay)
+        print(log_msg)
 
-        # Chiama la funzione originale per fare la trasformazione geometrica
-        return original(b, j, agent_idx, local_com_mat, size, trans_matrices)
+        # Reimplementazione della logica di trasformazione usando final_payload
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        nb_agent = torch.unsqueeze(final_payload, 0)
+
+        tfm_ji = trans_matrices[b, j, agent_idx]
+        M = (
+            torch.hstack((tfm_ji[:2, :2], -tfm_ji[:2, 3:4])).float().unsqueeze(0)
+        )
+        M = M.to(device)
+
+        mask = torch.tensor([[[1, 1, 4 / 128], [1, 1, 4 / 128]]], device=M.device)
+
+        M *= mask
+
+        grid = F.affine_grid(M, size=torch.Size(size))
+        warp_feat = F.grid_sample(nb_agent, grid).squeeze()
+        return warp_feat
 
     # Applica la patch
     SegModelBase.feature_transformation = staticmethod(wrapped)
