@@ -4,3 +4,5 @@ omnet_sim
 opp_run
 Makefile
 out/
+./results/General-#0.vci
+./results/General-#0.vec
