@@ -1,5 +1,6 @@
 #include "NetworkManager.h"
 #include "CoPerceptionApp.h"
+#include "PythonMobility.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
@@ -165,6 +166,34 @@ void NetworkManager::processCommand(const std::string& cmd)
     };
 
     std::string type = getVal("type");
+    
+#include "PythonMobility.h"
+
+// ... (inside processCommand)
+
+    if (type == "move") {
+        std::string id = getVal("id");
+        std::string xStr = getVal("x");
+        std::string yStr = getVal("y");
+        std::string zStr = getVal("z");
+        
+        double x = 0, y = 0, z = 0;
+        try { x = std::stod(xStr); y = std::stod(yStr); z = std::stod(zStr); } catch(...) {}
+
+        if (appRegistry.find(id) != appRegistry.end()) {
+            CoPerceptionApp* app = appRegistry[id];
+            cModule* host = app->getParentModule();
+            cModule* mobilityMod = host->getSubmodule("mobility");
+            PythonMobility* mob = dynamic_cast<PythonMobility*>(mobilityMod);
+            
+            if (mob) {
+                mob->setPosition(x, y, z);
+                EV << "NetworkManager: Moved node " << id << " to (" << x << ", " << y << ", " << z << ")\n";
+            } else {
+                EV << "NetworkManager: Node " << id << " does not have PythonMobility!\n";
+            }
+        }
+    }
     
     if (type == "send") {
         std::string srcId = getVal("src");

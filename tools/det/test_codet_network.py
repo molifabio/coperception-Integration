@@ -80,6 +80,24 @@ class OmnetBridge:
             except json.JSONDecodeError:
                 pass
 
+    def update_position(self, agent_id: int, x: float, y: float, z: float):
+        """Invia un comando di aggiornamento posizione a OMNeT++."""
+        if not self.enabled or not self._sock:
+            return
+
+        payload = {
+            "type": "move",
+            "id": str(agent_id),
+            "x": str(x),
+            "y": str(y),
+            "z": str(z)
+        }
+        
+        try:
+            self._send_json(payload)
+        except OSError:
+            pass # Best effort
+
     def transmit(
         self,
         *,
@@ -230,9 +248,48 @@ def patch_feature_transformation(bridge: Optional[OmnetBridge], dataset_framerat
 
         return None
 
+    def _extract_position(tm_tensor, b, agent_id):
+        """Extracts absolute position (x, y, z) of agent_id relative to agent 0 (ego).
+        Assumes agent 0 is at (0,0,0) in the simulation world.
+        """
+        if tm_tensor is None:
+            return (0.0, 0.0, 0.0)
+
+        try:
+            tm = tm_tensor.detach().cpu().numpy()
+        except Exception:
+            return (0.0, 0.0, 0.0)
+
+        if tm.ndim == 6:
+            tm = tm[:, 0]
+
+        if tm.ndim == 5:
+            try:
+                # tm[b, 0, agent_id] is transform FROM agent_id TO agent 0
+                # Wait, usually T_i_j means "Pose of j in i's frame".
+                # So T[0, j] gives j's coordinates in 0's frame.
+                m = tm[int(b), 0, int(agent_id)]
+                if m.shape == (4, 4):
+                    # Translation vector
+                    return (float(m[0, 3]), float(m[1, 3]), float(m[2, 3]))
+            except Exception:
+                pass
+        return (0.0, 0.0, 0.0)
+
     def wrapped(b, j, agent_idx, local_com_mat, all_warp, device, size, trans_matrices):
         # Aggiorna lo stato della rete (legge eventuali messaggi in arrivo)
         bridge.update_state()
+        
+        # --- UPDATE POSITIONS ---
+        # Send position updates for sender (j) and receiver (agent_idx) to OMNeT++
+        # We do this every time to ensure they are up to date.
+        # Optimization: cache last sent position and update only if changed significantly.
+        pos_j = _extract_position(trans_matrices, b, j)
+        pos_i = _extract_position(trans_matrices, b, agent_idx)
+        
+        bridge.update_position(int(j), pos_j[0], pos_j[1], pos_j[2])
+        bridge.update_position(int(agent_idx), pos_i[0], pos_i[1], pos_i[2])
+        # ------------------------
 
         # Estrae il payload (feature map) che l'agente j vuole inviare all'agente agent_idx
         current_payload = local_com_mat[b, j]
@@ -428,7 +485,9 @@ def build_parser():
         help="1: only v2i, 0: v2v and v2i",
     )
 
-    # Network coupling options
+    # ------------------------------------------------------------------
+    # Network coupling options 
+    # ------------------------------------------------------------------
     parser.add_argument(
         "--network_host",
         default="127.0.0.1",
