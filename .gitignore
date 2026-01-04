@@ -6,3 +6,4 @@ __pycache__/
 *.vec
 data/
 .cmdenv-log
+./logs/disco_eval/no_rsu/log_test.txt

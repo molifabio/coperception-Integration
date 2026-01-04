@@ -461,6 +461,12 @@ def build_parser():
         type=int,
         help="1: only v2i, 0: v2v and v2i",
     )
+    parser.add_argument(
+        "--scene_id",
+        default=None,
+        type=int,
+        help="Specify a single scene ID to run (e.g. 29)",
+    )
 
     # ------------------------------------------------------------------
     # Network coupling options 

@@ -596,6 +596,7 @@ if __name__ == "__main__":
     parser.add_argument("--apply_late_fusion", default=0, type=int, help="Late fusion")
     parser.add_argument("--compress_level", default=0, type=int, help="Compression")
     parser.add_argument("--only_v2i", default=0, type=int, help="Only V2I")
+    parser.add_argument("--scene_id", default=None, type=int, help="Specify a single scene ID to run (e.g. 29)")
 
     # Network coupling options (Aggiunte per OMNeT++)
     parser.add_argument("--network_host", default="127.0.0.1", type=str, help="Hostname of OMNeT++ bridge")
@@ -630,6 +631,8 @@ if __name__ == "__main__":
         restore_hook = patch_feature_transformation(bridge)
         
         config = Config("train")
+        # Passiamo args.scene_id a run_test_logic (che chiama test_seg.main o simile)
+        # Nota: test_seg.main si aspetta 'args' con 'scene_id' già presente perché lo abbiamo aggiunto al parser sopra.
         run_test_logic(config, args)
 
     finally:

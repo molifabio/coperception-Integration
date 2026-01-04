@@ -527,7 +527,7 @@ def cal_local_mAP(config, data, det_results, annotations):
     # if anchors_map.shape[2] < 7:#binary classification only has 4 anchors
     #    anchors_map = np.concatenate([anchors_map[:,:,:2],np.zeros_like(anchors_map[:,:,:3]),anchors_map[:,:,2:]],axis=2)
     #    reg_targets = np.concatenate([reg_targets[:,:,:2],np.zeros_like(reg_targets[:,:,:3]),reg_targets[:,:,2:]],axis=2)
-    plt.clf()
+    # plt.clf()
     for p in range(pred_len):
         gt_corners = []
         pred_corners = []
@@ -1127,7 +1127,7 @@ def visualization(config, data, box_colors, box_color_map, apply_late_fusion, sa
     plt.yticks([])
     if savename is not None:
         plt.savefig(savename, dpi=500)
-        plt.close(1)
+        plt.close('all')
     else:
         # plt.show()
         plt.pause(1)
