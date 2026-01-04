@@ -32,8 +32,8 @@ class OmnetBridge:
         self.enabled = enabled
         self._sock: Optional[socket.socket] = None
         self._buffer = ""
-        # Cache per i ritardi: Key="sender->receiver", Value=(delay_s, timestamp_received)
-        self.latest_delays: Dict[str, tuple[float, float]] = {}
+        # Cache per i ritardi: Key="sender->receiver", Value=delay_s
+        self.latest_delays: Dict[str, float] = {}
         
         if self.enabled:
             self._connect()
@@ -73,9 +73,9 @@ class OmnetBridge:
                 if msg.get("type") == "received":
                     msg_id = msg.get("id", "")
                     delay = float(msg.get("delay", 0.0))
-                    # Aggiorniamo il ritardo noto per questa coppia con il timestamp corrente
+                    # Aggiorniamo il ritardo noto per questa coppia
                     if msg_id:
-                        self.latest_delays[msg_id] = (delay, time.time())
+                        self.latest_delays[msg_id] = delay
             except json.JSONDecodeError:
                 pass
 
@@ -137,17 +137,8 @@ class OmnetBridge:
 
         # Ritorna l'ultimo ritardo conosciuto per questa coppia
         # Se non abbiamo ancora ricevuto nulla, usiamo default_delay
-        # Implementiamo un timeout: se non riceviamo aggiornamenti da > 2.0s, consideriamo il link perso
-        # nelle nostre simulazione inoltre non succede mai che un veicolo non trasmetta per 
-        # più di un secondo, ma se ciò dovesse accadere, consideriamo il link scaduto,
-        # il primo pacchetto verrà considerato perso e si riprenderà alla ricezione del successivo.
-        LINK_TIMEOUT = 2.0
-        
         if msg_id in self.latest_delays:
-            delay, last_time = self.latest_delays[msg_id]
-            if time.time() - last_time > LINK_TIMEOUT:
-                # Link scaduto (Packet Loss simulato per timeout)
-                return {"deliver": False, "delay_s": 0.0}
+            delay = self.latest_delays[msg_id]
             return {"deliver": True, "delay_s": max(0.0, delay)}
         else:
             # Mai ricevuto nulla finora
