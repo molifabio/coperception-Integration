@@ -241,8 +241,8 @@ def main(args):
         if pose_noise > 0:
             apply_pose_noise(pose_noise, trans_matrices)
 
-        if not args.rsu:
-            num_all_agents -= 1
+        # if not args.rsu:
+        #     num_all_agents -= 1
 
         if flag == "upperbound":
             padded_voxel_points = torch.cat(tuple(padded_voxel_points_teacher_list), 0)

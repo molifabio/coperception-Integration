@@ -1,0 +1,15 @@
+Local mAP@0.5 from agent 0
+Local mAP@0.7 from agent 0
+Local mAP@0.5 from agent 1
+Local mAP@0.7 from agent 1
+Local mAP@0.5 from agent 2
+Local mAP@0.7 from agent 2
+Local mAP@0.5 from agent 3
+Local mAP@0.7 from agent 3
+Quantitative evaluation results of model from /home/albert0/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth, at epoch 100
+agent1 mAP@0.5 is 0.6551943421363831 and mAP@0.7 is 0.5961484909057617
+agent2 mAP@0.5 is 0.6808882355690002 and mAP@0.7 is 0.585483729839325
+agent3 mAP@0.5 is 0.749858021736145 and mAP@0.7 is 0.6749453544616699
+agent4 mAP@0.5 is 0.7961999177932739 and mAP@0.7 is 0.725277304649353
+agent5 mAP@0.5 is 0.7193847894668579 and mAP@0.7 is 0.644933819770813
+average local mAP@0.5 is 0.7193847894668579 and average local mAP@0.7 is 0.644933819770813
