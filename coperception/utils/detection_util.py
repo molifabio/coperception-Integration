@@ -503,6 +503,78 @@ def bev_box_decode_corner(
     )
 
 
+def cal_frame_stats(config, data, iou_thr=0.5):
+    """Compute per-frame detection stats (num_gts, num_dets, num_tp) for proxy quality metric.
+
+    Uses the same data structure as cal_local_mAP but returns lightweight
+    counts instead of accumulating full detection results.
+
+    Returns:
+        tuple: (num_gts, num_dets, num_tp)
+    """
+    anchors_map = data["anchors_map"]
+    reg_targets = data["reg_targets"]
+    pred_selected = data["result"]
+    gt_max_iou_idx = data["gt_max_iou"]
+
+    if len(gt_max_iou_idx) == 0:
+        num_dets = 0
+        if len(pred_selected) > 0:
+            num_dets = pred_selected[0]["pred"].shape[0] if "pred" in pred_selected[0] else 0
+        return (0, num_dets, 0)
+
+    # Decode GT corners (same logic as cal_local_mAP)
+    gt_corners = []
+    for k in range(len(gt_max_iou_idx)):
+        anchor = anchors_map[tuple(gt_max_iou_idx[k][:-1])]
+        encode_box = reg_targets[tuple(gt_max_iou_idx[k][:-1]) + (0,)]
+        decode_box = bev_box_decode_np(encode_box, anchor)
+        decode_corner = center_to_corner_box2d(
+            np.asarray([decode_box[:2]]),
+            np.asarray([decode_box[2:4]]),
+            np.asarray([decode_box[4:]]),
+        )[0]
+        gt_corners.append(decode_corner)
+    gt_corners = np.asarray(gt_corners)
+
+    # Decode predicted corners
+    pred_corners = np.empty((0, 4, 2))
+    for k in range(len(pred_selected)):
+        pred_corners = pred_selected[k]["pred"][:, 0]
+
+    num_gts = gt_corners.shape[0]
+    num_dets = pred_corners.shape[0]
+
+    if num_dets == 0 or num_gts == 0:
+        return (num_gts, num_dets, 0)
+
+    # Quick IoU matching to count TPs
+    gt_box = convert_format(gt_corners)
+    pred_box = convert_format(pred_corners)
+
+    # Build IoU matrix
+    iou_rows = []
+    for gt in gt_box:
+        iou_rows.append(np.array(compute_iou(gt, pred_box)))
+    if len(gt_box) == 1:
+        ious = np.array([iou_rows[0]]).T
+    else:
+        ious = np.vstack(iou_rows).T  # shape (num_dets, num_gts)
+
+    # Greedy matching: each GT matched at most once
+    gt_matched = np.zeros(num_gts, dtype=bool)
+    num_tp = 0
+    # Sort detections by confidence (descending) if available
+    det_order = range(num_dets)
+    for i in det_order:
+        best_gt = ious[i].argmax()
+        if ious[i, best_gt] >= iou_thr and not gt_matched[best_gt]:
+            gt_matched[best_gt] = True
+            num_tp += 1
+
+    return (num_gts, num_dets, num_tp)
+
+
 def cal_local_mAP(config, data, det_results, annotations):
     # voxel_size = config.voxel_size
     # area_extents = config.area_extents

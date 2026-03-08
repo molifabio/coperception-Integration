@@ -1,0 +1,20 @@
+name: Build
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    # install dependencies
+    - name: Install dependencies
+      run: sudo apt-get update # && sudo apt-get install -yq something
+    # build project
+    - name: mkir build
+      run: mkdir build
+    - name: cmake
+      working-directory: ./build
+      run: cmake ..
+    - name: make
+      working-directory: ./build
+      run: make

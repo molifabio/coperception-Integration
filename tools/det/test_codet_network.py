@@ -9,6 +9,8 @@ import torch # type: ignore
 
 import test_codet
 from coperception.models.det.base.DetModelBase import DetModelBase
+from coperception.utils.detection_util import cal_frame_stats
+from konro_bridge import PerceptionProxyTracker
 
 
 class OmnetBridge:
@@ -500,7 +502,62 @@ def build_parser():
         help="Framerate of the dataset in Hz (default: 5.0). Used to calculate frame lag from network delay.",
     )
 
+    # ------------------------------------------------------------------
+    # Konro integration options
+    # ------------------------------------------------------------------
+    parser.add_argument(
+        "--konro_enable",
+        action="store_true",
+        help="Enable Konro resource manager feedback",
+    )
+    parser.add_argument(
+        "--konro_target",
+        default=0.85,
+        type=float,
+        help="Target quality for the proxy metric (default: 0.85)",
+    )
+    parser.add_argument(
+        "--konro_ema_alpha",
+        default=0.2,
+        type=float,
+        help="EMA smoothing factor for proxy metric (default: 0.2)",
+    )
+    parser.add_argument(
+        "--konro_interval",
+        default=5,
+        type=int,
+        help="Send feedback to Konro every N frames (default: 5)",
+    )
+    parser.add_argument(
+        "--konro_iou_thr",
+        default=0.5,
+        type=float,
+        help="IoU threshold for per-frame TP counting (default: 0.5)",
+    )
+
     return parser
+
+
+def patch_cal_local_mAP(tracker: PerceptionProxyTracker, iou_thr: float = 0.5):
+    """Monkey-patch cal_local_mAP in test_codet to also feed the proxy tracker."""
+    # Get the original function from test_codet's namespace
+    original_cal = test_codet.cal_local_mAP
+
+    def wrapped(config, data, det_results, annotations):
+        # Compute per-frame stats and feed the proxy tracker
+        num_gts, num_dets, num_tp = cal_frame_stats(config, data, iou_thr=iou_thr)
+        tracker.update(num_gts, num_dets, num_tp)
+
+        # Call the original accumulation function
+        return original_cal(config, data, det_results, annotations)
+
+    # Patch in test_codet's module namespace (that's where it's looked up at call site)
+    test_codet.cal_local_mAP = wrapped
+
+    def restore():
+        test_codet.cal_local_mAP = original_cal
+
+    return restore
 
 
 def main():
@@ -509,6 +566,8 @@ def main():
 
     bridge = None
     restore_hook = lambda: None
+    restore_konro_hook = lambda: None
+    tracker = None
 
     try:
         # Inizializza il bridge solo se non è disabilitato da riga di comando
@@ -527,6 +586,19 @@ def main():
             bridge, 
             dataset_framerate=args.dataset_framerate
         )
+
+        # Inizializza il tracker Konro e patch cal_local_mAP
+        tracker = PerceptionProxyTracker(
+            target_quality=args.konro_target,
+            ema_alpha=args.konro_ema_alpha,
+            feedback_interval=args.konro_interval,
+            konro_enabled=args.konro_enable,
+        )
+        if args.konro_enable:
+            tracker.register()
+        restore_konro_hook = patch_cal_local_mAP(
+            tracker, iou_thr=args.konro_iou_thr
+        )
         
         # Imposta la strategia di sharing per multiprocessing (necessario per PyTorch con molti dati)
         torch.multiprocessing.set_sharing_strategy("file_system")
@@ -536,7 +608,10 @@ def main():
         test_codet.main(args)
     finally:
         # Assicura che la patch venga rimossa e il bridge chiuso anche in caso di errore
+        restore_konro_hook()
         restore_hook()
+        if tracker is not None:
+            print(f"\n[Konro] Final proxy EMA: {tracker.current_ema:.4f} over {tracker.frame_count} frames")
         if bridge is not None:
             bridge.close()
 
