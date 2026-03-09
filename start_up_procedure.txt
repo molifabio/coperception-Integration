@@ -51,4 +51,26 @@ python test_coseg_network.py \
   --logpath ~/coperception/coperception-Integration/logs \
   --network_host 127.0.0.1 \
   --network_port 5555 \
-  --konro_enable
+  --konro_enable \
+  --konro_target 0.85
+
+
+cmd 4 (Monitor CPU Konro) - avviare dopo cmd 3, sostituire XXXXX col PID che appare nel log Konro:
+  # Il PID appare nel log di Konro nella riga:
+  # "WORKLOADMANAGER FeedbackRequest received {"name":"test_codet_network.py","process_pid":XXXXX,...}"
+
+PID=XXXXX
+watch -n 1 "
+echo '=== Core assegnati (indici CPU) ===' 
+sudo cat /sys/fs/cgroup/konro.slice/app-${PID}.scope/cpuset.cpus
+echo ''
+echo '=== Core effettivamente attivi ==='
+sudo cat /sys/fs/cgroup/konro.slice/app-${PID}.scope/cpuset.cpus.effective
+echo ''
+echo '=== CPU load per core (PUs) ==='
+sudo grep 'PUs' /proc/1/fd/1 2>/dev/null | tail -1
+"
+
+  # Nota: con CoperceptionPolicy, feedback < 90 aggiunge core, feedback > 110 ne rimuove.
+  # Dopo 3 cicli consecutivi con feedback < 90, Konro conclude che il bottleneck
+  # e' il canale radio (non la CPU) e torna a 1 core.
