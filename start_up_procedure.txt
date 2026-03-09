@@ -9,7 +9,12 @@ cd ~/coperception/omnet_sim
 #Il server a questo punto dovrebbe essere in attesa
 
 
-cmd 2 (Client, det):
+cmd 2 (konro)
+
+cd ~/coperception/coperception-Integration/konro/build/rm && sudo ./konro
+
+
+cmd 3 (Client, det):
 
 conda activate coperception
 cd ~/coperception/coperception-Integration/tools/det
@@ -23,7 +28,7 @@ python test_codet_network.py \
   --scene_id 29        #opzionale, se omesso esegue tutto
 
 
-cmd 2 (Client, seg):
+cmd 3 (Client, seg):
 
 conda activate coperception
 cd ~/coperception/coperception-Integration/tools/seg
@@ -35,3 +40,15 @@ python test_coseg_network.py \
   --network_host 127.0.0.1 \
   --network_port 5555 \
   --scene_id 29
+
+
+  cmd 3 (Client, det, konro)
+
+  conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py \
+  --com disco \
+  --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test \
+  --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth \
+  --logpath ~/coperception/coperception-Integration/logs \
+  --network_host 127.0.0.1 \
+  --network_port 5555 \
+  --konro_enable
