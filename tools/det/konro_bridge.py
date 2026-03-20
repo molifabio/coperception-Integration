@@ -113,6 +113,11 @@ class PerceptionProxyTracker:
         self._ema: Optional[float] = None
         self._frame_count = 0
         self._registered = False
+        self._proxy_sum = 0.0
+        self._proxy_min = 1.0
+        self._proxy_max = 0.0
+        self._below_target_count = 0
+        self._feedback_count = 0
 
     def register(self):
         """Register with Konro. Call once at startup."""
@@ -138,6 +143,11 @@ class PerceptionProxyTracker:
 
         # Proxy quality metric
         proxy = recall * fp_penalty
+        self._proxy_sum += proxy
+        self._proxy_min = min(self._proxy_min, proxy)
+        self._proxy_max = max(self._proxy_max, proxy)
+        if proxy < self.target_quality:
+            self._below_target_count += 1
 
         # EMA smoothing
         if self._ema is None:
@@ -158,6 +168,7 @@ class PerceptionProxyTracker:
         if self.konro_enabled and self._frame_count % self.feedback_interval == 0:
             fb = compute_feedback(self._ema, self.target_quality)
             send_feedback_message(fb)
+            self._feedback_count += 1
             print(f"[KonroBridge] Sent feedback={fb} (ema={self._ema:.3f}, target={self.target_quality})")
 
     @property
@@ -167,3 +178,16 @@ class PerceptionProxyTracker:
     @property
     def frame_count(self) -> int:
         return self._frame_count
+
+    def summary(self) -> dict:
+        frames = max(1, self._frame_count)
+        return {
+            "frames": self._frame_count,
+            "target_quality": self.target_quality,
+            "proxy_mean": self._proxy_sum / frames,
+            "proxy_min": self._proxy_min if self._frame_count > 0 else 0.0,
+            "proxy_max": self._proxy_max if self._frame_count > 0 else 0.0,
+            "proxy_ema": self.current_ema,
+            "below_target_ratio": self._below_target_count / frames,
+            "feedback_events": self._feedback_count,
+        }

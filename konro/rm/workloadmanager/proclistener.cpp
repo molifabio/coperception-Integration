@@ -39,6 +39,15 @@ int ProcListener::createNetlinkSocket()
     int sock = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_CONNECTOR);
     if (sock == -1) {
         errno_ = errno;
+        return sock;
+    }
+
+    // Reduce event drops under bursty process activity.
+    int rcvbuf = 4 * 1024 * 1024;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf)) != 0) {
+        ostringstream os;
+        os << "PROCLISTENER warning: cannot set SO_RCVBUF (" << strerror(errno) << ")";
+        cat_.warn(os.str());
     }
     return sock;
 }
@@ -163,6 +172,19 @@ bool ProcListener::receiveConnectorNetlinkMessage(int socket, void *buffer, size
         ostringstream os;
         os << "PROCLISTENER receiveConnectorNetlinkMessage: nBytes is " << nBytes << ", errno is " << errno;
         cat_.debug(os.str());
+
+        // Transient receive conditions should not terminate Konro.
+        if (nBytes < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
+            return true;
+        }
+
+        // ENOBUFS means the kernel dropped some events due to queue overflow.
+        // We keep running and resync on next events instead of shutting down.
+        if (nBytes < 0 && errno == ENOBUFS) {
+            cat_.warn("PROCLISTENER netlink overflow (ENOBUFS): some proc events were lost, continuing");
+            return true;
+        }
+
         return false;
     }
 
@@ -174,9 +196,10 @@ bool ProcListener::receiveConnectorNetlinkMessage(int socket, void *buffer, size
         // Handle NOOP and ERROR messages
         unsigned msg_type = nl_hdr->nlmsg_type;
         if (msg_type == NLMSG_NOOP) {
+            nl_hdr = NLMSG_NEXT(nl_hdr, nBytes);
             continue;
         } else if (msg_type == NLMSG_ERROR || msg_type == NLMSG_OVERRUN) {
-            errno = -EINVAL;
+            errno_ = EINVAL;
             return false;
         } else if (msg_type == NLMSG_STOP_MESSAGE_TYPE) {
             // this is our own message
@@ -207,13 +230,13 @@ void ProcListener::forwardEvent(uint8_t *data, size_t len)
     struct proc_event *ev = reinterpret_cast<struct proc_event *>(data);
 
     switch (ev->what) {
-    case PROC_EVENT_FORK:
+    case proc_event::PROC_EVENT_FORK:
         bus_.publish(new ForkEvent(data, len));
         break;
-    case PROC_EVENT_EXEC:
+    case proc_event::PROC_EVENT_EXEC:
         bus_.publish(new ExecEvent(data, len));
         break;
-    case PROC_EVENT_EXIT:
+    case proc_event::PROC_EVENT_EXIT:
         bus_.publish(new ExitEvent(data, len));
         break;
         /* Other event types: PROC_EVENT_NONE, PROC_EVENT_UID, PROC_EVENT_GID,

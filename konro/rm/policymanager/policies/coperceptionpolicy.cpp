@@ -123,10 +123,18 @@ void CoperceptionPolicy::addApp(AppMappingPtr appMapping)
 
 void CoperceptionPolicy::removeApp(AppMappingPtr appMapping)
 {
-    std::vector<short> pus = rmcommon::toVector(appMapping->getPuVector());
-    for (short pu : pus) {
-        --appsOnPu_[pu];
-        appsOnPu_[pu] = std::max(appsOnPu_[pu], 0);
+    // The app may have already exited and its cgroup may no longer exist.
+    // In that case getPuVector() can throw; removal must remain best-effort.
+    try {
+        std::vector<short> pus = rmcommon::toVector(appMapping->getPuVector());
+        for (short pu : pus) {
+            --appsOnPu_[pu];
+            appsOnPu_[pu] = std::max(appsOnPu_[pu], 0);
+        }
+    } catch (std::exception &e) {
+        log4cpp::Category::getRoot().warn(
+            "COPERCEPTIONPOLICY removeApp PID %ld: ignoring exception during cleanup: %s",
+            (long)appMapping->getPid(), e.what());
     }
     appStates_.erase(appMapping->getPid());
 }

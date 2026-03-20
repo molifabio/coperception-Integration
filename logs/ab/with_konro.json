@@ -1,0 +1,26 @@
+{
+  "run": {
+    "konro_enable": true,
+    "network_disable": false,
+    "network_profile": "good:120:0.02:0.00,down:60:0.40:0.15,recover:120:0.08:0.02",
+    "network_profile_seed": 123,
+    "dataset_framerate": 5.0
+  },
+  "network": {
+    "tx_total": 0,
+    "delivered": 0,
+    "dropped": 0,
+    "delivery_ratio": 0.0,
+    "drop_ratio": 0.0,
+    "live_packets": 0,
+    "delayed_packets": 0,
+    "stale_packets": 0,
+    "underflow_packets": 0,
+    "latency_avg_s": 0.0,
+    "latency_p50_s": 0.0,
+    "latency_p95_s": 0.0,
+    "latency_max_s": 0.0,
+    "phase_hits": {}
+  },
+  "proxy": {}
+}

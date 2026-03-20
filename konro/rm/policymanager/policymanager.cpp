@@ -90,16 +90,22 @@ bool PolicyManager::processEvent(std::shared_ptr<const rmcommon::BaseEvent> even
     os << "POLICYMANAGER received message => " << *event;
     cat_.debug(os.str());
 #endif
-    if (const AddEvent *e = dynamic_cast<const AddEvent *>(event.get())) {
-        processAddEvent(static_pointer_cast<const AddEvent>(event));
-    } else if (const RemoveEvent *e = dynamic_cast<const RemoveEvent *>(event.get())) {
-        processRemoveEvent(static_pointer_cast<const RemoveEvent>(event));
-    } else if (const TimerEvent *e = dynamic_cast<const TimerEvent *>(event.get())) {
-        processTimerEvent(static_pointer_cast<const TimerEvent>(event));
-    } else if (const MonitorEvent *e = dynamic_cast<const MonitorEvent *>(event.get())) {
-        processMonitorEvent(static_pointer_cast<const MonitorEvent>(event));
-    } else if (const FeedbackEvent *e = dynamic_cast<const FeedbackEvent *>(event.get())) {
-        processFeedbackEvent(static_pointer_cast<const FeedbackEvent>(event));
+    try {
+        if (const AddEvent *e = dynamic_cast<const AddEvent *>(event.get())) {
+            processAddEvent(static_pointer_cast<const AddEvent>(event));
+        } else if (const RemoveEvent *e = dynamic_cast<const RemoveEvent *>(event.get())) {
+            processRemoveEvent(static_pointer_cast<const RemoveEvent>(event));
+        } else if (const TimerEvent *e = dynamic_cast<const TimerEvent *>(event.get())) {
+            processTimerEvent(static_pointer_cast<const TimerEvent>(event));
+        } else if (const MonitorEvent *e = dynamic_cast<const MonitorEvent *>(event.get())) {
+            processMonitorEvent(static_pointer_cast<const MonitorEvent>(event));
+        } else if (const FeedbackEvent *e = dynamic_cast<const FeedbackEvent *>(event.get())) {
+            processFeedbackEvent(static_pointer_cast<const FeedbackEvent>(event));
+        }
+    } catch (std::exception &e) {
+        cat_.error("POLICYMANAGER exception while processing event %s: %s",
+                   event->getName().c_str(), e.what());
+        return true;
     }
     return true;        // continue processing
 }

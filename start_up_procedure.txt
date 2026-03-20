@@ -3,7 +3,7 @@ cmd 1 (Server):
 conda activate coperception
 cd ~/omnetpp-6.0.3
 source setenv
-cd ~/coperception/omnet_sim
+cd ~/coperception/coperception-Integration/omnet_sim
 ./omnet_sim -n ".:../../../inet/src" -u Cmdenv
 
 #Il server a questo punto dovrebbe essere in attesa
@@ -42,18 +42,13 @@ python test_coseg_network.py \
   --scene_id 29
 
 
-  cmd 3 (Client, det, konro)
+cmd 3 (Client, det, konro attivo - una riga)
 
-  conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py \
-  --com disco \
-  --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test \
-  --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth \
-  --logpath ~/coperception/coperception-Integration/logs \
-  --network_host 127.0.0.1 \
-  --network_port 5555 \
-  --konro_enable \
-  --konro_target 0.85
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --network_host 127.0.0.1 --network_port 5555 --konro_enable --konro_target 0.85 --network_profile good:30:0.02:0.00,down:30:0.40:0.15,recover:40:0.08:0.02 --network_profile_seed 123 --summary_out ~/coperception/coperception-Integration/logs/ab/with_konro.json --scene_id 29
 
+cmd 3b (Client, det, konro disattivato - una riga)
+
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --network_host 127.0.0.1 --network_port 5555 --konro_target 0.85 --network_profile good:30:0.02:0.00,down:30:0.40:0.15,recover:40:0.08:0.02 --network_profile_seed 123 --summary_out ~/coperception/coperception-Integration/logs/ab/without_konro.json --scene_id 29
 
 cmd 4 (Monitor CPU Konro) - avviare dopo cmd 3, sostituire XXXXX col PID che appare nel log Konro:
   # Il PID appare nel log di Konro nella riga:
@@ -74,3 +69,8 @@ sudo grep 'PUs' /proc/1/fd/1 2>/dev/null | tail -1
   # Nota: con CoperceptionPolicy, feedback < 90 aggiunge core, feedback > 110 ne rimuove.
   # Dopo 3 cicli consecutivi con feedback < 90, Konro conclude che il bottleneck
   # e' il canale radio (non la CPU) e torna a 1 core.
+
+
+cmd 5 (Confronto risultati JSON + grafico PNG)
+
+conda activate coperception && cd ~/coperception/coperception-Integration && python tools/det/compare_konro_runs.py --with-konro logs/ab/with_konro.json --without-konro logs/ab/without_konro.json --out logs/ab/comparison.json --plot-out logs/ab/comparison.png
