@@ -36,7 +36,7 @@ class CoperceptionPolicy : public IBasePolicy {
     static constexpr int kHighThreshold = 110;   // above → can release resources
 
     /// Consecutive low-feedback ticks before giving up (network-caused)
-    static constexpr int kGiveUpTicks = 3;
+    static constexpr int kGiveUpTicks = 5;
 
     /// Per-app state to detect persistent degradation
     struct AppState {

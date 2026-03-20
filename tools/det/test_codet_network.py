@@ -694,9 +694,9 @@ def build_parser():
     )
     parser.add_argument(
         "--konro_interval",
-        default=5,
+        default=1,
         type=int,
-        help="Send feedback to Konro every N frames (default: 5)",
+        help="Send feedback to Konro every N frames (default: 1)",
     )
     parser.add_argument(
         "--konro_iou_thr",
@@ -704,19 +704,56 @@ def build_parser():
         type=float,
         help="IoU threshold for per-frame TP counting (default: 0.5)",
     )
+    parser.add_argument(
+        "--konro_agent_id",
+        default=1,
+        type=int,
+        help="Agent ID to monitor for Konro feedback (default: 1)",
+    )
 
     return parser
 
 
-def patch_cal_local_mAP(tracker: PerceptionProxyTracker, iou_thr: float = 0.5):
-    """Monkey-patch cal_local_mAP in test_codet to also feed the proxy tracker."""
+def patch_cal_local_mAP(
+    tracker: PerceptionProxyTracker,
+    iou_thr: float = 0.5,
+    target_agent_id: int = 1,
+    rsu: int = 0,
+    num_agent_total: int = 6,
+):
+    """Monkey-patch cal_local_mAP to feed Konro tracker for one selected agent only."""
     # Get the original function from test_codet's namespace
     original_cal = test_codet.cal_local_mAP
 
+    # test_codet evaluates agents in deterministic order.
+    # If RSU is disabled, evaluation index k=0 corresponds to original agent 1.
+    eval_indices = list(range(1, num_agent_total)) if rsu else list(range(num_agent_total - 1))
+    if not eval_indices:
+        eval_indices = [0]
+
+    target_eval_idx = target_agent_id if rsu else (target_agent_id - 1)
+    if target_eval_idx not in eval_indices:
+        raise ValueError(
+            f"Invalid --konro_agent_id={target_agent_id} for num_agent={num_agent_total}, rsu={rsu}"
+        )
+
+    call_count = 0
+
     def wrapped(config, data, det_results, annotations):
-        # Compute per-frame stats and feed the proxy tracker
-        num_gts, num_dets, num_tp = cal_frame_stats(config, data, iou_thr=iou_thr)
-        tracker.update(num_gts, num_dets, num_tp)
+        nonlocal call_count
+        current_eval_idx = eval_indices[call_count % len(eval_indices)]
+        call_count += 1
+
+        # Compute stats only for the selected agent and skip empty samples.
+        if current_eval_idx == target_eval_idx:
+            num_gts, num_dets, num_tp = cal_frame_stats(config, data, iou_thr=iou_thr)
+            if not (num_gts == 0 and num_dets == 0):
+                tracker.update(num_gts, num_dets, num_tp)
+            else:
+                print(
+                    f"[Proxy] skipped empty step for agent {target_agent_id} "
+                    f"(gts={num_gts}, dets={num_dets})"
+                )
 
         # Call the original accumulation function
         return original_cal(config, data, det_results, annotations)
@@ -773,7 +810,11 @@ def main():
         if args.konro_enable:
             tracker.register()
         restore_konro_hook = patch_cal_local_mAP(
-            tracker, iou_thr=args.konro_iou_thr
+            tracker,
+            iou_thr=args.konro_iou_thr,
+            target_agent_id=args.konro_agent_id,
+            rsu=args.rsu,
+            num_agent_total=args.num_agent,
         )
         
         # Imposta la strategia di sharing per multiprocessing (necessario per PyTorch con molti dati)
