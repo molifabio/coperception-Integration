@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 import random
@@ -6,6 +7,7 @@ import socket
 import statistics
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +17,45 @@ import test_codet
 from coperception.models.det.base.DetModelBase import DetModelBase
 from coperception.utils.detection_util import cal_frame_stats
 from konro_bridge import PerceptionProxyTracker
+
+
+def _append_summary_history(path: str, entry: Dict[str, Any]) -> None:
+    """Append one run summary entry to a JSON history file without erasing existing runs."""
+    out_dir = os.path.dirname(path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    history: Dict[str, Any] = {
+        "schema_version": 1,
+        "runs": [],
+    }
+
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+
+            # New format: {"schema_version": 1, "runs": [...]}.
+            if isinstance(existing, dict) and isinstance(existing.get("runs"), list):
+                history = existing
+            # Legacy single-run format: {"run": {...}, "network": {...}, "proxy": {...}}.
+            elif isinstance(existing, dict) and (
+                "run" in existing or "network" in existing or "proxy" in existing
+            ):
+                history["runs"].append(existing)
+            # Alternate format: top-level list of entries.
+            elif isinstance(existing, list):
+                history["runs"].extend(existing)
+        except (OSError, json.JSONDecodeError, TypeError):
+            # Corrupted or non-JSON file: start a fresh history container.
+            history = {"schema_version": 1, "runs": []}
+
+    history.setdefault("schema_version", 1)
+    history.setdefault("runs", [])
+    history["runs"].append(entry)
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(history, f, indent=2)
 
 
 @dataclass
@@ -62,7 +103,10 @@ class NetworkRuntimeStats:
             delays = sorted(self.delays_s)
             p50 = delays[len(delays) // 2]
             p95 = delays[min(len(delays) - 1, int(len(delays) * 0.95))]
-            avg = statistics.fmean(delays)
+            if hasattr(statistics, "fmean"):
+                avg = statistics.fmean(delays)
+            else:
+                avg = sum(delays) / len(delays)
             dmax = delays[-1]
         else:
             p50 = p95 = avg = dmax = 0.0
@@ -770,6 +814,8 @@ def patch_cal_local_mAP(
 def main():
     parser = build_parser()
     args = parser.parse_args()
+    started_at = datetime.now(timezone.utc)
+    t0 = time.monotonic()
 
     bridge = None
     restore_hook = lambda: None
@@ -861,22 +907,41 @@ def main():
             
             if run_successful or has_data:
                 payload = {
+                    "run_id": str(uuid.uuid4()),
+                    "started_at_utc": started_at.isoformat(),
+                    "ended_at_utc": datetime.now(timezone.utc).isoformat(),
+                    "duration_s": round(time.monotonic() - t0, 3),
+                    "run_completed_scene": bool(run_successful),
                     "run": {
+                        "scene_id": args.scene_id,
                         "konro_enable": bool(args.konro_enable),
+                        "omnet_enable": not bool(args.network_disable),
                         "network_disable": bool(args.network_disable),
                         "network_profile": args.network_profile,
                         "network_profile_seed": args.network_profile_seed,
                         "dataset_framerate": args.dataset_framerate,
                     },
+                    "params": {
+                        "com": args.com,
+                        "data": args.data,
+                        "resume": args.resume,
+                        "num_agent": args.num_agent,
+                        "rsu": args.rsu,
+                        "konro_target": args.konro_target,
+                        "konro_interval": args.konro_interval,
+                        "konro_iou_thr": args.konro_iou_thr,
+                        "konro_agent_id": args.konro_agent_id,
+                        "network_host": args.network_host,
+                        "network_port": args.network_port,
+                        "network_timeout": args.network_timeout,
+                        "network_default_delay": args.network_default_delay,
+                        "network_fail_open": bool(args.network_fail_open),
+                    },
                     "network": network_summary,
                     "proxy": proxy_summary,
                 }
-                out_dir = os.path.dirname(args.summary_out)
-                if out_dir:
-                    os.makedirs(out_dir, exist_ok=True)
-                with open(args.summary_out, "w", encoding="utf-8") as f:
-                    json.dump(payload, f, indent=2)
-                print(f"[Summary] Report written to {args.summary_out}")
+                _append_summary_history(args.summary_out, payload)
+                print(f"[Summary] Appended run report to {args.summary_out}")
             else:
                 print(f"[Summary] Test FAILED early. Skipping JSON report (empty) to avoid confusion -> {args.summary_out}")
 

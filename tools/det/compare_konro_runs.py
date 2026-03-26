@@ -27,6 +27,24 @@ def _read_json(path: Path) -> Dict[str, Any]:
         return json.load(f)
 
 
+def _select_run_entry(data: Dict[str, Any], run_index: int) -> Dict[str, Any]:
+    """Return a single run payload from either legacy or history JSON format."""
+    if isinstance(data, dict) and isinstance(data.get("runs"), list):
+        runs = data["runs"]
+        if not runs:
+            raise ValueError("History file has no runs")
+        try:
+            selected = runs[run_index]
+        except IndexError as exc:
+            raise ValueError(
+                f"Invalid run index {run_index} for history of length {len(runs)}"
+            ) from exc
+        if not isinstance(selected, dict):
+            raise ValueError("Selected run entry is not a JSON object")
+        return selected
+    return data
+
+
 def _get_num(d: Dict[str, Any], section: str, key: str) -> float:
     value = d.get(section, {}).get(key, 0.0)
     try:
@@ -183,10 +201,22 @@ def main() -> None:
         help="Path to summary JSON generated with --konro_enable",
     )
     parser.add_argument(
+        "--with-konro-run-index",
+        default=-1,
+        type=int,
+        help="Run index to use if --with-konro points to a history JSON (default: -1 last run)",
+    )
+    parser.add_argument(
         "--without-konro",
         required=True,
         type=Path,
         help="Path to summary JSON generated without --konro_enable",
+    )
+    parser.add_argument(
+        "--without-konro-run-index",
+        default=-1,
+        type=int,
+        help="Run index to use if --without-konro points to a history JSON (default: -1 last run)",
     )
     parser.add_argument(
         "--out",
@@ -202,8 +232,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    with_data = _read_json(args.with_konro)
-    without_data = _read_json(args.without_konro)
+    with_data = _select_run_entry(_read_json(args.with_konro), args.with_konro_run_index)
+    without_data = _select_run_entry(_read_json(args.without_konro), args.without_konro_run_index)
 
     rows = _build_rows(with_data, without_data)
     _print_table(rows)

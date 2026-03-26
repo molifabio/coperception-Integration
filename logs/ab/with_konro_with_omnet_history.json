@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "runs": [
+    {
+      "run_id": "02e6ecd3-e7b6-4bd4-866f-2b5f4fde134e",
+      "started_at_utc": "2026-03-26T16:42:03.499098+00:00",
+      "ended_at_utc": "2026-03-26T18:21:43.415549+00:00",
+      "duration_s": 5979.917,
+      "run_completed_scene": true,
+      "run": {
+        "scene_id": 29,
+        "konro_enable": true,
+        "omnet_enable": true,
+        "network_disable": false,
+        "network_profile": "good:30:0.02:0.00,down:30:0.40:0.15,recover:40:0.08:0.02",
+        "network_profile_seed": 123,
+        "dataset_framerate": 5.0
+      },
+      "params": {
+        "com": "disco",
+        "data": "/home/albert0/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test",
+        "resume": "/home/albert0/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth",
+        "num_agent": 6,
+        "rsu": 0,
+        "konro_target": 0.85,
+        "konro_interval": 1,
+        "konro_iou_thr": 0.5,
+        "konro_agent_id": 1,
+        "network_host": "127.0.0.1",
+        "network_port": 5555,
+        "network_timeout": 2.0,
+        "network_default_delay": 0.0,
+        "network_fail_open": false
+      },
+      "network": {
+        "tx_total": 2000,
+        "delivered": 1894,
+        "dropped": 106,
+        "delivery_ratio": 0.947,
+        "drop_ratio": 0.053,
+        "live_packets": 1337,
+        "delayed_packets": 557,
+        "stale_packets": 557,
+        "underflow_packets": 0,
+        "latency_avg_s": 0.1586834667370636,
+        "latency_p50_s": 0.08,
+        "latency_p95_s": 0.4,
+        "latency_max_s": 0.4,
+        "phase_hits": {
+          "down": 600,
+          "good": 600,
+          "recover": 800
+        }
+      },
+      "proxy": {
+        "frames": 100,
+        "target_quality": 0.85,
+        "proxy_mean": 0.6615311355311357,
+        "proxy_min": 0.42857142857142855,
+        "proxy_max": 0.8666666666666667,
+        "proxy_ema": 0.8378141276193238,
+        "below_target_ratio": 0.91,
+        "feedback_events": 100
+      }
+    }
+  ]
+}

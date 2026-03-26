@@ -42,21 +42,31 @@ python test_coseg_network.py \
   --scene_id 29
 
 
-cmd 3a (Client, det, konro attivo con OMNeT - una riga)
+cmd 3a (Client, det, konro ON, OMNeT ON - una riga)
 
-conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --network_host 127.0.0.1 --network_port 5555 --konro_enable --konro_target 0.85 --konro_interval 1 --konro_agent_id 1 --network_profile good:30:0.02:0.00,down:30:0.40:0.15,recover:40:0.08:0.02 --network_profile_seed 123 --summary_out ~/coperception/coperception-Integration/logs/ab/with_konro_with_omnet.json --scene_id 29
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --network_host 127.0.0.1 --network_port 5555 --konro_enable --konro_target 0.85 --konro_interval 1 --konro_agent_id 1 --network_profile good:30:0.02:0.00,down:30:0.40:0.15,recover:40:0.08:0.02 --network_profile_seed 123 --summary_out ~/coperception/coperception-Integration/logs/ab/with_konro_with_omnet_history.json --scene_id 29
 
-cmd 3b (Client, det, konro attivo senza OMNeT - una riga)
+cmd 3b (Client, det, konro ON, OMNeT OFF- una riga)
 
-conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --konro_enable --konro_target 0.85 --konro_interval 1 --network_disable --konro_agent_id 1 --summary_out ~/coperception/coperception-Integration/logs/ab/with_konro_without_omnet.json --scene_id 29
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --konro_enable --konro_target 0.85 --konro_interval 1 --network_disable --konro_agent_id 1 --summary_out ~/coperception/coperception-Integration/logs/ab/with_konro_without_omnet_history.json --scene_id 29
 
-cmd 3c (Client, det, senza konro con OMNeT - una riga)
+cmd 3c (Client, det, konro OFF, OMNeT ON - una riga)
 
-conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --network_host 127.0.0.1 --network_port 5555 --konro_target 0.85 --network_profile good:30:0.02:0.00,down:30:0.40:0.15,recover:40:0.08:0.02 --network_profile_seed 123 --summary_out ~/coperception/coperception-Integration/logs/ab/without_konro_with_omnet.json --scene_id 29
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --network_host 127.0.0.1 --network_port 5555 --konro_target 0.85 --network_profile good:30:0.02:0.00,down:30:0.40:0.15,recover:40:0.08:0.02 --network_profile_seed 123 --summary_out ~/coperception/coperception-Integration/logs/ab/without_konro_with_omnet_history.json --scene_id 29
 
-cmd 3d (Client, det, senza konro e senza OMNeT - una riga)
+cmd 3d (Client, det, konro OFF, OMNeT OFF - una riga)
 
-conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --konro_target 0.85 --network_disable --summary_out ~/coperception/coperception-Integration/logs/ab/without_konro_without_omnet.json --scene_id 29
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --konro_target 0.85 --network_disable --summary_out ~/coperception/coperception-Integration/logs/ab/without_konro_without_omnet_history.json --scene_id 29
+
+uso cmd 3x con storico JSON (importante)
+
+  - --summary_out ora va trattato come file storico: ogni run viene aggiunta (append) in runs[]
+  - stesso file + scene_id diversi = storico multi-run/multi-scena
+  - una run e' considerata completata quando il test finisce senza errori (run_completed_scene=true nel JSON)
+
+esempio: eseguire 3 scene nella stessa condizione (konro+omnet)
+
+for SCENE in 29 30 31; do conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --network_host 127.0.0.1 --network_port 5555 --konro_enable --konro_target 0.85 --konro_interval 1 --konro_agent_id 1 --network_profile good:30:0.02:0.00,down:30:0.40:0.15,recover:40:0.08:0.02 --network_profile_seed 123 --summary_out ~/coperception/coperception-Integration/logs/ab/with_konro_with_omnet_history.json --scene_id ${SCENE}; done
 
 cmd 4 (Monitor CPU Konro) - avviare dopo cmd 3, sostituire XXXXX col PID che appare nel log Konro:
   # Il PID appare nel log di Konro nella riga:
@@ -81,4 +91,11 @@ sudo grep 'PUs' /proc/1/fd/1 2>/dev/null | tail -1
 
 cmd 5 (Confronto risultati JSON + grafico PNG)
 
-conda activate coperception && cd ~/coperception/coperception-Integration && python tools/det/compare_konro_runs.py --with-konro logs/ab/with_konro_with_omnet.json --without-konro logs/ab/with_konro_without_omnet.json --out logs/ab/comparison.json --plot-out logs/ab/comparison.png
+cmd 5a (confronta ultima run nei 2 file storici)
+
+conda activate coperception && cd ~/coperception/coperception-Integration && python tools/det/compare_konro_runs.py --with-konro logs/ab/with_konro_with_omnet_history.json --without-konro logs/ab/without_konro_with_omnet_history.json --out logs/ab/comparison_latest.json --plot-out logs/ab/comparison_latest.png
+
+cmd 5b (confronta run specifiche tramite indice)
+
+  # -1 = ultima run, -2 = penultima, 0 = prima run
+conda activate coperception && cd ~/coperception/coperception-Integration && python tools/det/compare_konro_runs.py --with-konro logs/ab/with_konro_with_omnet_history.json --with-konro-run-index -2 --without-konro logs/ab/without_konro_with_omnet_history.json --without-konro-run-index -2 --out logs/ab/comparison_idx_minus2.json --plot-out logs/ab/comparison_idx_minus2.png
