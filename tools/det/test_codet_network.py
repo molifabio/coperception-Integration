@@ -754,6 +754,12 @@ def build_parser():
         type=int,
         help="Agent ID to monitor for Konro feedback (default: 1)",
     )
+    parser.add_argument(
+        "--konro_feedback_noise_std",
+        default=0.0,
+        type=float,
+        help="Stddev of Gaussian noise added to metric before feedback (default: 0.0)",
+    )
 
     return parser
 
@@ -852,6 +858,7 @@ def main():
             ema_alpha=args.konro_ema_alpha,
             feedback_interval=args.konro_interval,
             konro_enabled=args.konro_enable,
+            feedback_noise_std=args.konro_feedback_noise_std,
         )
         if args.konro_enable:
             tracker.register()

@@ -7,6 +7,7 @@ using plain HTTP POST requests — no C++ bindings needed.
 
 import json
 import os
+import random
 import sys
 from typing import Optional
 
@@ -104,11 +105,13 @@ class PerceptionProxyTracker:
         ema_alpha: float = 0.2,
         feedback_interval: int = 5,
         konro_enabled: bool = True,
+        feedback_noise_std: float = 0.0,
     ):
         self.target_quality = target_quality
         self.ema_alpha = ema_alpha
         self.feedback_interval = feedback_interval
         self.konro_enabled = konro_enabled
+        self.feedback_noise_std = max(0.0, feedback_noise_std)
 
         self._ema: Optional[float] = None
         self._frame_count = 0
@@ -143,6 +146,9 @@ class PerceptionProxyTracker:
 
         # Proxy quality metric
         proxy = recall * fp_penalty
+        if self.feedback_noise_std > 0.0:
+            proxy = min(1.0, max(0.0, proxy + random.gauss(0.0, self.feedback_noise_std)))
+
         self._proxy_sum += proxy
         self._proxy_min = min(self._proxy_min, proxy)
         self._proxy_max = max(self._proxy_max, proxy)
