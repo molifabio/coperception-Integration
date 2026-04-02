@@ -26,6 +26,7 @@ python test_codet_network.py \
   --network_host 127.0.0.1 \
   --network_port 5555 \
   --scene_id 29        #opzionale, se omesso esegue tutto
+  --konro_feedback_noise_std 0.0
 
 
 cmd 3 (Client, seg):
