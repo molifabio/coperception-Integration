@@ -1,0 +1,83 @@
+{
+  "with_konro": "logs/ab/with_konro_without_omnet_history.json",
+  "without_konro": "logs/ab/without_konro_without_omnet_history.json",
+  "metrics": [
+    {
+      "name": "proxy_mean",
+      "with_konro": 0.6772409484642512,
+      "without_konro": 0.6775164835164839,
+      "delta_abs": -0.00027553505223265606,
+      "delta_pct": -0.04066839094490494,
+      "higher_is_better": true
+    },
+    {
+      "name": "proxy_ema",
+      "with_konro": 0.7912319496011071,
+      "without_konro": 0.8402792161061867,
+      "delta_abs": -0.04904726650507962,
+      "delta_pct": -5.837020072013954,
+      "higher_is_better": true
+    },
+    {
+      "name": "below_target_ratio",
+      "with_konro": 0.7,
+      "without_konro": 0.9,
+      "delta_abs": -0.20000000000000007,
+      "delta_pct": -22.22222222222223,
+      "higher_is_better": false
+    },
+    {
+      "name": "delivery_ratio",
+      "with_konro": 0.0,
+      "without_konro": 0.0,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": true
+    },
+    {
+      "name": "drop_ratio",
+      "with_konro": 0.0,
+      "without_konro": 0.0,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": false
+    },
+    {
+      "name": "latency_avg_s",
+      "with_konro": 0.0,
+      "without_konro": 0.0,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": false
+    },
+    {
+      "name": "latency_p95_s",
+      "with_konro": 0.0,
+      "without_konro": 0.0,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": false
+    },
+    {
+      "name": "stale_packets",
+      "with_konro": 0.0,
+      "without_konro": 0.0,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": false
+    },
+    {
+      "name": "underflow_packets",
+      "with_konro": 0.0,
+      "without_konro": 0.0,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": false
+    }
+  ],
+  "summary": {
+    "better": 1,
+    "worse": 2,
+    "same": 6
+  }
+}

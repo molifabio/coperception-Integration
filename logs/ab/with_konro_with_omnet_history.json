@@ -64,66 +64,6 @@
       }
     },
     {
-      "run_id": "ab2a5624-3af8-42e1-958d-55747d195cb7",
-      "started_at_utc": "2026-04-06T10:26:20.964973+00:00",
-      "ended_at_utc": "2026-04-06T10:30:44.123701+00:00",
-      "duration_s": 263.159,
-      "run_completed_scene": false,
-      "run": {
-        "scene_id": 29,
-        "konro_enable": true,
-        "omnet_enable": true,
-        "network_disable": false,
-        "network_profile": "good:30:0.02:0.00,down:30:0.40:0.15,recover:40:0.08:0.02",
-        "network_profile_seed": 123,
-        "dataset_framerate": 5.0
-      },
-      "params": {
-        "com": "disco",
-        "data": "/home/albert0/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test",
-        "resume": "/home/albert0/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth",
-        "num_agent": 6,
-        "rsu": 0,
-        "konro_target": 0.8,
-        "konro_interval": 1,
-        "konro_iou_thr": 0.5,
-        "konro_agent_id": 1,
-        "network_host": "127.0.0.1",
-        "network_port": 5555,
-        "network_timeout": 2.0,
-        "network_default_delay": 0.0,
-        "network_fail_open": false
-      },
-      "network": {
-        "tx_total": 80,
-        "delivered": 80,
-        "dropped": 0,
-        "delivery_ratio": 1.0,
-        "drop_ratio": 0.0,
-        "live_packets": 79,
-        "delayed_packets": 1,
-        "stale_packets": 1,
-        "underflow_packets": 0,
-        "latency_avg_s": 0.053905936249999994,
-        "latency_p50_s": 0.056981,
-        "latency_p95_s": 0.0924855,
-        "latency_max_s": 0.100091,
-        "phase_hits": {
-          "good": 80
-        }
-      },
-      "proxy": {
-        "frames": 3,
-        "target_quality": 0.8,
-        "proxy_mean": 0.782051282051282,
-        "proxy_min": 0.7142857142857143,
-        "proxy_max": 0.8461538461538461,
-        "proxy_ema": 0.8129670329670331,
-        "below_target_ratio": 0.6666666666666666,
-        "feedback_events": 3
-      }
-    },
-    {
       "run_id": "732bfeae-24d4-42c9-96ae-689abedc20da",
       "started_at_utc": "2026-04-06T10:32:24.504363+00:00",
       "ended_at_utc": "2026-04-06T12:02:33.625609+00:00",
