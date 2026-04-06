@@ -58,6 +58,122 @@
         "below_target_ratio": 0.9,
         "feedback_events": 100
       }
+    },
+    {
+      "run_id": "2bc3a3bf-9dd3-4094-b419-edb950c557e5",
+      "started_at_utc": "2026-04-06T13:56:35.549728+00:00",
+      "ended_at_utc": "2026-04-06T15:12:12.483699+00:00",
+      "duration_s": 4536.934,
+      "run_completed_scene": true,
+      "run": {
+        "scene_id": 29,
+        "konro_enable": true,
+        "omnet_enable": false,
+        "network_disable": true,
+        "network_profile": "steady:1000000:0.00:0.00",
+        "network_profile_seed": 123,
+        "dataset_framerate": 5.0
+      },
+      "params": {
+        "com": "disco",
+        "data": "/home/albert0/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test",
+        "resume": "/home/albert0/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth",
+        "num_agent": 6,
+        "rsu": 0,
+        "konro_target": 0.8,
+        "konro_interval": 1,
+        "konro_iou_thr": 0.5,
+        "konro_agent_id": 1,
+        "network_host": "127.0.0.1",
+        "network_port": 5555,
+        "network_timeout": 2.0,
+        "network_default_delay": 0.0,
+        "network_fail_open": false
+      },
+      "network": {
+        "tx_total": 0,
+        "delivered": 0,
+        "dropped": 0,
+        "delivery_ratio": 0.0,
+        "drop_ratio": 0.0,
+        "live_packets": 0,
+        "delayed_packets": 0,
+        "stale_packets": 0,
+        "underflow_packets": 0,
+        "latency_avg_s": 0.0,
+        "latency_p50_s": 0.0,
+        "latency_p95_s": 0.0,
+        "latency_max_s": 0.0,
+        "phase_hits": {}
+      },
+      "proxy": {
+        "frames": 100,
+        "target_quality": 0.8,
+        "proxy_mean": 0.6756816052668991,
+        "proxy_min": 0.4300797921225906,
+        "proxy_max": 0.888339360882419,
+        "proxy_ema": 0.8416127320409985,
+        "below_target_ratio": 0.82,
+        "feedback_events": 100
+      }
+    },
+    {
+      "run_id": "4cc3ba66-39de-4e06-9761-11df37f641e7",
+      "started_at_utc": "2026-04-06T17:10:45.761252+00:00",
+      "ended_at_utc": "2026-04-06T18:18:46.243823+00:00",
+      "duration_s": 4080.483,
+      "run_completed_scene": true,
+      "run": {
+        "scene_id": 29,
+        "konro_enable": true,
+        "omnet_enable": false,
+        "network_disable": true,
+        "network_profile": "steady:1000000:0.00:0.00",
+        "network_profile_seed": 123,
+        "dataset_framerate": 5.0
+      },
+      "params": {
+        "com": "disco",
+        "data": "/home/albert0/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test",
+        "resume": "/home/albert0/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth",
+        "num_agent": 6,
+        "rsu": 0,
+        "konro_target": 0.8,
+        "konro_interval": 1,
+        "konro_iou_thr": 0.5,
+        "konro_agent_id": 1,
+        "network_host": "127.0.0.1",
+        "network_port": 5555,
+        "network_timeout": 2.0,
+        "network_default_delay": 0.0,
+        "network_fail_open": false
+      },
+      "network": {
+        "tx_total": 0,
+        "delivered": 0,
+        "dropped": 0,
+        "delivery_ratio": 0.0,
+        "drop_ratio": 0.0,
+        "live_packets": 0,
+        "delayed_packets": 0,
+        "stale_packets": 0,
+        "underflow_packets": 0,
+        "latency_avg_s": 0.0,
+        "latency_p50_s": 0.0,
+        "latency_p95_s": 0.0,
+        "latency_max_s": 0.0,
+        "phase_hits": {}
+      },
+      "proxy": {
+        "frames": 100,
+        "target_quality": 0.8,
+        "proxy_mean": 0.6772409484642512,
+        "proxy_min": 0.1766718765469174,
+        "proxy_max": 1.0,
+        "proxy_ema": 0.7912319496011071,
+        "below_target_ratio": 0.7,
+        "feedback_events": 100
+      }
     }
   ]
 }
