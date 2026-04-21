@@ -9,7 +9,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch # type: ignore
 
@@ -191,6 +191,10 @@ class OmnetBridge:
         self._buffer = ""
         # Cache per i ritardi: Key="sender->receiver", Value=delay_s
         self.latest_delays: Dict[str, float] = {}
+        # Stato per rilevare perdite per gap di sequenza sugli ACK ricevuti.
+        self._next_seq: Dict[str, int] = {}
+        self._last_rx_seq: Dict[str, int] = {}
+        self._pending_losses: Dict[str, int] = {}
         
         if self.enabled:
             self._connect()
@@ -226,13 +230,37 @@ class OmnetBridge:
             
             try:
                 msg = json.loads(line)
-                # Ci aspettiamo: {"type": "received", "id": "0->1", "delay": 0.05, "deliver": true}
+                # Ci aspettiamo: {"type": "received", "id": "0->1#42", "delay": 0.05, "deliver": true}
                 if msg.get("type") == "received":
                     msg_id = msg.get("id", "")
                     delay = float(msg.get("delay", 0.0))
-                    # Aggiorniamo il ritardo noto per questa coppia
-                    if msg_id:
-                        self.latest_delays[msg_id] = delay
+                    deliver = bool(msg.get("deliver", True))
+
+                    if not msg_id:
+                        continue
+
+                    pair_key, seq = self._parse_msg_id(msg_id)
+                    if not pair_key:
+                        continue
+
+                    # Aggiorna sempre il ritardo noto del canale per la coppia.
+                    self.latest_delays[pair_key] = delay
+
+                    # Modalita legacy senza sequenza: manteniamo solo delay.
+                    if seq is None:
+                        continue
+
+                    last_seq = self._last_rx_seq.get(pair_key)
+                    if last_seq is not None and seq > (last_seq + 1):
+                        missed = seq - (last_seq + 1)
+                        self._pending_losses[pair_key] = self._pending_losses.get(pair_key, 0) + missed
+
+                    if last_seq is None or seq > last_seq:
+                        self._last_rx_seq[pair_key] = seq
+
+                    # Se OMNeT++ segnala esplicitamente delivery=false, trattalo come loss osservata.
+                    if not deliver:
+                        self._pending_losses[pair_key] = self._pending_losses.get(pair_key, 0) + 1
             except json.JSONDecodeError:
                 pass
 
@@ -266,8 +294,12 @@ class OmnetBridge:
         if not self.enabled or not self._sock:
             return {"deliver": True, "delay_s": self.default_delay}
 
-        # ID univoco per la coppia (usato per tracciare il ritardo)
-        msg_id = f"{sender}->{receiver}"
+        pair_key = self._pair_key(sender, receiver)
+        seq = self._next_seq.get(pair_key, 0)
+        self._next_seq[pair_key] = seq + 1
+
+        # ID univoco per pacchetto sulla coppia (usato per tracciare ordine e perdite)
+        msg_id = f"{pair_key}#{seq}"
 
         # Costruisce il comando "send" per OMNeT++
         # Protocollo: { "type": "send", "src": "0", "dst": "1", "size": 1000, "id": "0->1" }
@@ -292,14 +324,16 @@ class OmnetBridge:
                 return {"deliver": True, "delay_s": self.default_delay}
             return {"deliver": False, "delay_s": 0.0}
 
-        # Ritorna l'ultimo ritardo conosciuto per questa coppia
-        # Se non abbiamo ancora ricevuto nulla, usiamo default_delay
-        if msg_id in self.latest_delays:
-            delay = self.latest_delays[msg_id]
-            return {"deliver": True, "delay_s": max(0.0, delay)}
-        else:
-            # Mai ricevuto nulla finora
-            return {"deliver": True, "delay_s": self.default_delay}
+        # Ritardo canale: ultimo noto per la coppia (indipendente dalla loss del singolo pacchetto).
+        delay = max(0.0, self.latest_delays.get(pair_key, self.default_delay))
+
+        # Se abbiamo già osservato perdite pendenti su questa coppia, iniettane una ora.
+        pending = self._pending_losses.get(pair_key, 0)
+        if pending > 0:
+            self._pending_losses[pair_key] = pending - 1
+            return {"deliver": False, "delay_s": delay}
+
+        return {"deliver": True, "delay_s": delay}
 
     def close(self) -> None:
         self._close()
@@ -342,6 +376,31 @@ class OmnetBridge:
             except OSError:
                 pass
             self._sock = None
+
+    @staticmethod
+    def _pair_key(sender: int, receiver: int) -> str:
+        return f"{sender}->{receiver}"
+
+    @staticmethod
+    def _parse_msg_id(msg_id: str) -> Tuple[Optional[str], Optional[int]]:
+        # Nuovo formato: "sender->receiver#seq".
+        # Compatibilita legacy: "sender->receiver" (senza seq).
+        raw = str(msg_id).strip()
+        if not raw:
+            return None, None
+
+        if "#" not in raw:
+            return raw, None
+
+        pair, seq_str = raw.rsplit("#", 1)
+        pair = pair.strip()
+        if not pair:
+            return None, None
+        try:
+            seq = int(seq_str)
+        except (TypeError, ValueError):
+            return pair, None
+        return pair, seq
 
     def __del__(self) -> None:
         self._close()
@@ -488,11 +547,10 @@ def patch_feature_transformation(
         sim_delay = decision.get("delay_s", 0.0)
 
         # Overlay time-varying profile: emula periodi di down/recovery sopra la latenza OMNeT++.
+        # Il ritardo rappresenta lo stato del canale e resta indipendente dalla perdita del singolo pacchetto.
+        sim_delay = max(float(sim_delay), current_phase.delay_floor_s)
         if rng.random() < current_phase.drop_prob:
             is_delivered = False
-            sim_delay = 0.0
-        else:
-            sim_delay = max(float(sim_delay), current_phase.delay_floor_s)
 
         # Calcolo del frame lag: Quanti frame indietro nel tempo dobbiamo andare
         # Lag = Ritardo (s) * Framerate (Hz)
@@ -505,7 +563,7 @@ def patch_feature_transformation(
         if not is_delivered:
             # Caso 1: Pacchetto perso -> Zeri
             final_payload = torch.zeros_like(current_payload)
-            log_msg = f"[XXX] {j} -> {agent_idx} | PACKET LOST | phase={current_phase.name}"
+            log_msg = f"[XXX] {j} -> {agent_idx} | PACKET LOST | Delay: {sim_delay:.3f}s (channel) | phase={current_phase.name}"
         elif frames_lag == 0:
             # Caso 2: Ritardo trascurabile -> Usa dato corrente
             final_payload = current_payload
