@@ -156,15 +156,18 @@ def _parse_network_profile(profile: str) -> List[NetworkPhase]:
 
 
 def _phase_for_frame(phases: List[NetworkPhase], frame_idx: int) -> NetworkPhase:
-    total_cycle = sum(p.frames for p in phases)
-    if total_cycle <= 0:
-        return phases[0]
-    pos = frame_idx % total_cycle
+    """Return the network phase for a given frame index.
+    Phases progress sequentially without cycling - once the last phase is reached, it persists."""
+    if not phases:
+        raise ValueError("phases list cannot be empty")
+    
     acc = 0
     for phase in phases:
-        acc += phase.frames
-        if pos < acc:
+        if frame_idx < acc + phase.frames:
             return phase
+        acc += phase.frames
+    
+    # Once all phases are completed, stay in the last phase
     return phases[-1]
 
 
@@ -753,12 +756,13 @@ def build_parser():
     )
     parser.add_argument(
         "--network_profile",
-        default="steady:1000000:0.00:0.00",
+        default="good:20:0.02:0.00,medium:25:0.08:0.03,bad:25:0.15:0.08,worst:10000:0.25:0.15",
         type=str,
         help=(
-            "Time-varying network profile as comma-separated phases: "
+            "Progressive network degradation profile as comma-separated phases: "
             "name:frames:delay_floor_s:drop_prob "
-            "(example: good:120:0.02:0.00,down:60:0.40:0.15,recover:120:0.08:0.02)."
+            "(example: good:20:0.02:0.00,medium:25:0.08:0.03,bad:25:0.15:0.08,worst:10000:0.25:0.15). "
+            "Phases progress sequentially without cycling. After all phases, stays in the last phase."
         ),
     )
     parser.add_argument(

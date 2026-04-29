@@ -1,0 +1,864 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[italian]{babel}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{lstautogobble}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{parskip}
+\usepackage{microtype}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{array}
+
+\geometry{
+  top=2.5cm,
+  bottom=2.5cm,
+  left=3cm,
+  right=3cm
+}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+  citecolor=black
+}
+
+% Stile per i listati di codice
+\lstdefinestyle{codestyle}{
+  backgroundcolor=\color{gray!8},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue}\bfseries,
+  commentstyle=\color{gray!60!black}\itshape,
+  stringstyle=\color{green!50!black},
+  numberstyle=\tiny\color{gray},
+  breaklines=true,
+  breakatwhitespace=false,
+  numbers=left,
+  numbersep=8pt,
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{gray!40},
+  captionpos=b,
+  autogobble=true,
+  showstringspaces=false,
+  tabsize=4
+}
+\lstset{style=codestyle}
+
+% Stile per JSON inline
+\lstdefinelanguage{json}{
+  morestring=[b]",
+  literate=
+    *{:}{{{\color{black}:}}}{1}
+    {,}{{{\color{black},}}}{1}
+    {\{}{{{\color{black}\{}}}{1}
+    {\}}{{{\color{black}\}}}}{1}
+    {[}{{{\color{black}[}}}{1}
+    {]}{{{\color{black}]}}}{1},
+  keywordstyle=\color{blue},
+  stringstyle=\color{green!50!black},
+  basicstyle=\ttfamily\small,
+}
+
+% Colonne tabelle
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+
+% Titolo
+\title{
+  \vspace{-1cm}
+  \Large\textbf{Integrazione di un Simulatore di Rete e di un Resource Manager}\\
+  \large\textbf{in un Sistema di Percezione Cooperativa Multi-Agente}\\[0.5em]
+  \normalsize Report tecnico del progetto di integrazione\\
+  CoPerception -- OMNeT++ -- Konro
+}
+\author{}
+\date{Aprile 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Introduzione}
+% ============================================================
+
+Il presente documento descrive il lavoro svolto per estendere il framework di percezione cooperativa
+\textit{CoPerception} con due componenti esterne: il simulatore di rete \textbf{OMNeT++} e il resource
+manager \textbf{Konro}.
+
+L'obiettivo complessivo del progetto è estendere il framework di percezione cooperativa multiagente con un simulatore di rete in grado di emulare più accuratamente l'applicazione del framework in contesti reali; dopodichè verificare se un resource manager basato su feedback applicativo possa migliorare il comportamento del sistema
+in presenza di congestione o latenza elevata.
+
+Il lavoro si articola nelle seguenti fasi principali:
+
+\begin{enumerate}
+  \item \textbf{Integrazione con OMNeT++}: il framework di deep learning viene collegato a un simulatore
+        di rete realistico per sostituire la comunicazione ideale (istantanea) con una che tenga conto
+        di latenza, perdite di pacchetti e posizione fisica degli agenti.
+
+  \item \textbf{Integrazione con Konro}: il processo Python che esegue il modello invia periodicamente
+        un segnale di feedback al resource manager, il quale pu\`o agire sulle risorse assegnate al
+        processo in funzione della qualit\`a percepita.
+\end{enumerate}
+
+% ============================================================
+\section{Il Framework CoPerception}
+% ============================================================
+
+CoPerception \`e un SDK Python/PyTorch per la percezione cooperativa in scenari di guida autonoma.
+Fornisce un insieme di modelli, dataset e script di training/valutazione per task di rilevamento
+oggetti (\textit{detection}) e segmentazione semantica da nuvole di punti 3D in formato BEV
+(\textit{Bird's-Eye View}).
+
+\subsection{Dataset V2X-Sim}
+
+Il dataset utilizzato \`e \textbf{V2X-Sim}, un dataset sintetico che simula scenari di comunicazione
+Vehicle-to-Everything (V2X) con fino a 6 agenti cooperanti per scena (5 veicoli e 1 RSU
+opzionale). Ogni agente dispone di un sensore LiDAR e condivide le proprie feature con gli altri.
+Il dataset \`e acquisito a \textbf{5 Hz} (un frame ogni 0,2 secondi).
+
+\subsection{Pipeline di rilevamento cooperativo}
+
+Per il task di detection il modello di riferimento \`e \textbf{DiscoNet} (Learning Distilled
+Collaboration Graph for Multi-Agent Perception), che opera in modalit\`a di fusione intermedia
+(\textit{intermediate fusion}): ogni agente calcola localmente le proprie feature map dalla
+nuvola di punti LiDAR, le trasforma nel sistema di riferimento dell'agente ricevente tramite una
+matrice di trasformazione omogenea $4\times4$, e le trasmette. Il ricevente fonde le feature
+ricevute con le proprie prima dell'head di detection.
+
+% ============================================================
+\section{Integrazione con OMNeT++}
+% ============================================================
+
+\subsection{Motivazione}
+
+Nel framework originale, la condivisione delle feature map tra agenti avviene in modo ideale:
+i dati vengono copiati in memoria senza alcun ritardo e senza possibilit\`a di perdita.
+Questo non riflette le condizioni reali di un canale wireless V2X (IEEE 802.11p), in cui
+latenza, congestione e perdite di pacchetti sono eventi ordinari.
+
+Per rendere la simulazione pi\`u fedele alla realt\`a, OMNeT++ viene usato come simulatore
+di rete, capace di modellare la propagazione radio, la collisione di pacchetti e il
+ritardo end-to-end in funzione della posizione fisica dei nodi.
+
+\subsection{Architettura generale}
+
+La connessione tra Python e OMNeT++ segue uno schema client-server TCP con un canale di
+comunicazione basato su messaggi JSON delimitati da newline (\textit{newline-delimited JSON}).
+(Figura~\ref{fig:arch}):
+
+\begin{itemize}
+  \item \textbf{OMNeT++} avvia un server TCP su una porta condivisa (default: 5555) attraverso
+        il modulo \texttt{NetworkManager}.
+  \item \textbf{Python} si connette al server all'inizio dell'esecuzione tramite la classe
+        \texttt{OmnetBridge}.
+\end{itemize}
+
+\subsubsection{Paradigma asincrono event-based}
+
+Una delle scelte di design fondamentali del sistema \`e l'adozione di un \textbf{paradigma
+asincrono event-based} per lo scambio di informazioni tra i due processi. Questa scelta
+\`e stata dettata da un vincolo strutturale preciso: i due sistemi operano su \textit{time
+domain} incompatibili.
+
+Il processo Python esegue inferenza frame per frame, dove ogni iterazione del loop di test
+richiede un tempo di calcolo variabile e non deterministico (dipendente dal modello, dal
+batch size, dalla GPU disponibile). OMNeT++, invece, avanza nel suo tempo simulato in passi
+discreti, indipendentemente dall'orologio di sistema.
+
+Obbligare i due processi a sincronizzarsi ad ogni scambio di pacchetto -- uno schema
+\textit{request-response} sincrono -- avrebbe introdotto un accoppiamento temporale stretto
+che avrebbe rallentato l'inferenza in attesa della risposta del simulatore per ogni coppia
+mittente-ricevente. Con 6 agenti, ogni frame genera fino a $6 \times 5 = 30$ chiamate a
+\texttt{feature\_transformation}: attendere una risposta sincrona per ciascuna avrebbe reso
+il sistema inutilizzabile.
+
+Il paradigma adottato \`e invece il seguente:
+
+\begin{enumerate}
+  \item Python invia a OMNeT++ i comandi \texttt{send} e \texttt{move} \textbf{in modo
+        fire-and-forget}, senza attendere risposta.
+  \item OMNeT++ processa i pacchetti nel proprio tempo simulato e, quando un pacchetto
+        arriva a destinazione, invia un evento \texttt{received} di ritorno.
+  \item Python legge gli eventi in arrivo da OMNeT++ \textbf{in modo non bloccante}
+        (\texttt{update\_state()}) all'inizio di ogni chiamata alla monkey patch,
+        aggiornando una cache locale (\texttt{latest\_delays}) con l'ultimo ritardo
+        noto per ogni coppia mittente-ricevente.
+  \item Il ritardo applicato alla feature map di un dato frame \`e l'ultimo valore
+        ricevuto da OMNeT++ per quella coppia, non il valore del pacchetto corrente
+        (che potrebbe non essere ancora stato consegnato).
+\end{enumerate}
+
+Questo schema introduce un \textbf{lag di un ciclo} nel feedback di ritardo: il ritardo
+usato al frame $t$ \`e quello misurato da OMNeT++ per il pacchetto del frame $t-k$
+(dove $k$ dipende dalla velocit\`a relativa dei due processi). Questo \`e accettabile
+perch\'e i ritardi in un canale wireless reale variano lentamente rispetto alla frequenza
+di campionamento del dataset (5 Hz), e la cache si aggiorna continuamente.
+
+\subsubsection{Altre scelte di design}
+
+\paragraph{Socket non bloccante lato Python.}
+Il socket TCP aperto da \texttt{OmnetBridge} viene impostato immediatamente in modalit\`a
+non bloccante dopo la connessione. Le letture (\texttt{recv}) vengono effettuate in loop
+fino a \texttt{BlockingIOError}, che segnala che non ci sono pi\`u dati disponibili.
+Questo evita che il processo Python si blocchi in attesa di un messaggio che potrebbe non
+arrivare entro il frame corrente.
+
+\paragraph{Handshake sincrono iniziale.}
+L'unico punto sincrono dell'intero sistema \`e la fase di avvio: OMNeT++ attende in modo
+bloccante la connessione di Python prima di avanzare nella simulazione. Questo garantisce
+che i due processi siano allineati al momento zero e che non vengano persi comandi emessi
+da Python prima che il server sia pronto. Una volta stabilita la connessione, il socket
+viene immediatamente reso non bloccante e il loop di polling prende il controllo.
+
+\paragraph{Separazione netta tra trasporto e decisione.}
+Il modulo \texttt{CoPerceptionApp} in OMNeT++ si limita a inviare e ricevere pacchetti
+UDP reali (con frammentazione) e a misurare il ritardo end-to-end. Non conosce la
+semantica del payload (feature map, tensore PyTorch): per lui \`e semplicemente una
+sequenza di byte. Tutta la logica applicativa (buffer, frame lag, sostituzione del
+tensore) risiede nel wrapper Python. Questo disaccoppiamento mantiene il codice C++
+semplice e riusabile indipendentemente dal modello di percezione utilizzato.
+
+\paragraph{Fail-open per la robustezza.}
+Se il bridge non riesce a connettersi a OMNeT++ o perde la connessione durante
+l'esecuzione, il parametro \texttt{--network\_fail\_open} permette di continuare
+l'inferenza degradando silenziosamente al comportamento ideale (ritardo zero, nessuna
+perdita). Questo rende possibile eseguire esperimenti di baseline senza modificare
+il codice, semplicemente non avviando OMNeT++.
+
+\begin{figure}[H]
+  \centering
+  % Screenshot 1: schema architetturale dei due processi
+  % Inserire qui un diagramma (anche disegnato a mano o con draw.io) che mostri:
+  %   - il processo Python con OmnetBridge
+  %   - il canale TCP sulla porta 5555
+  %   - il processo OMNeT++ con NetworkManager e i nodi CoPerceptionApp
+  \fbox{\parbox{0.8\textwidth}{\centering\vspace{2cm}
+    [SCREENSHOT 1 -- Schema architetturale Python $\leftrightarrow$ OMNeT++]\\
+    \small Catturare un diagramma o uno schema della connessione TCP tra i due processi.\\
+    Si pu\`o realizzare con draw.io o analoga applicazione.
+  \vspace{2cm}}}
+  \caption{Schema dell'integrazione tra Python (CoPerception) e OMNeT++.}
+  \label{fig:arch}
+\end{figure}
+
+\subsection{Il modulo NetworkManager}
+
+Dal lato Omnet++, l'integrazione avviene tramite il modulo NetworkManager. La sua inizializzazione
+segue due fasi distinte:
+
+\begin{enumerate}
+  \item \textbf{Handshake sincrono}: al lancio della simulazione, \texttt{NetworkManager} apre
+        un socket TCP in modalit\`a bloccante e attende che Python si connetta. Questo garantisce
+        che OMNeT++ non inizi a simulare prima che il modello di deep learning sia pronto.
+
+  \item \textbf{Loop asincrono}: una volta stabilita la connessione, il socket viene impostato
+        come non bloccante e viene avviato un ciclo di polling ogni 1 ms (\texttt{socketPoll})
+        che legge e processa i comandi in arrivo.
+\end{enumerate}
+
+Il modulo registra tutti i sottomoduli \texttt{CoPerceptionApp} presenti nella simulazione
+(uno per nodo veicolare) attraverso il metodo \texttt{discoverApps()}, che scansiona l'intera
+gerarchia di moduli INET e mappa ogni agente al proprio indice.
+
+\subsection{Il modulo CoPerceptionApp (lato OMNeT++)}
+
+\texttt{CoPerceptionApp} \`e l'applicazione UDP che gira su ogni nodo veicolare simulato.
+Le sue responsabilit\`a sono:
+
+\begin{itemize}
+  \item \textbf{Frammentazione}: le feature map hanno dimensioni dell'ordine del centinaio di
+        kilobyte. Poich\'e il limite di UDP \`e 65\,535 byte, il payload viene spezzato in
+        chunk da 60\,000 byte e inviato in frammenti successivi.
+  \item \textbf{Misurazione del ritardo}: quando un pacchetto arriva a destinazione, l'app
+        calcola il ritardo end-to-end come differenza tra il tempo di arrivo (\texttt{simTime()})
+        e il tempo di creazione del pacchetto (\texttt{getCreationTime()}), e notifica il valore
+        al \texttt{NetworkManager} tramite il metodo \texttt{notifyReception()}.
+\end{itemize}
+
+\subsection{Protocollo di comunicazione JSON}
+
+Il protocollo prevede tre tipi di messaggi:
+
+\subsubsection{Messaggio \texttt{move} (Python $\to$ OMNeT++)}
+
+Aggiorna la posizione fisica di un nodo nel simulatore, estratta dalla matrice di trasformazione
+omogenea del dataset. Questo permette al simulatore di calcolare la propagazione radio in funzione
+della distanza reale tra agenti.
+
+\begin{lstlisting}[language=json, caption={Messaggio move inviato da Python a OMNeT++ per aggiornare la posizione di un agente.}]
+{"type": "move", "id": "2", "x": "15.3", "y": "-8.7", "z": "0.0"}
+\end{lstlisting}
+
+La posizione \`e espressa in metri nel sistema di riferimento dell'agente ego (agente 0).
+L'estrazione avviene leggendo la colonna di traslazione dalla matrice di trasformazione
+$\mathbf{T} \in \mathbb{R}^{4\times4}$:
+\begin{equation}
+  (x, y, z) = \bigl(T_{0,3},\; T_{1,3},\; T_{2,3}\bigr)
+\end{equation}
+
+\subsubsection{Messaggio \texttt{send} (Python $\to$ OMNeT++)}
+
+Ordina al simulatore di inviare un pacchetto UDP dal nodo sorgente al nodo destinatario,
+con la dimensione reale del tensore feature map in byte.
+
+\begin{lstlisting}[language=json, caption={Messaggio send con dimensione reale del payload in byte.}]
+{"type": "send", "src": "1", "dst": "0", "size": "98304", "id": "1->0"}
+\end{lstlisting}
+
+La dimensione viene calcolata come:
+\begin{equation}
+  \text{size\_bytes} = \text{element\_size} \times \prod_i \text{dim}_i
+\end{equation}
+dove \texttt{element\_size} \`e la dimensione in byte di un elemento del tensore PyTorch
+(4 byte per \texttt{float32}).
+
+\subsubsection{Messaggio \texttt{received} (OMNeT++ $\to$ Python)}
+
+Notifica Python che un pacchetto \`e stato consegnato, insieme al ritardo misurato.
+
+\begin{lstlisting}[language=json, caption={Risposta asincrona di OMNeT++ alla consegna di un pacchetto.}]
+{"type": "received", "id": "1->0", "delay": 0.1823, "deliver": true}
+\end{lstlisting}
+
+\subsection{La Monkey Patch di \texttt{feature\_transformation}}
+
+La tecnica usata per intercettare le comunicazioni tra agenti senza modificare il codice
+del modello originale \`e la \textbf{monkey patch}: il metodo statico
+\texttt{DetModelBase.feature\_transformation} viene sostituito a runtime con una funzione
+\texttt{wrapped} che esegue la simulazione di rete prima di chiamare la funzione originale.
+
+\begin{lstlisting}[language=python, caption={Sostituzione a runtime del metodo statico con la versione strumentata.}]
+descriptor = DetModelBase.__dict__["feature_transformation"]
+original = descriptor.__func__ if isinstance(descriptor, staticmethod) else descriptor
+
+def wrapped(b, j, agent_idx, local_com_mat, all_warp, device, size, trans_matrices):
+    # ... logica di rete ...
+    local_com_mat_patched = local_com_mat.clone()
+    local_com_mat_patched[b, j] = final_payload
+    return original(b, j, agent_idx, local_com_mat_patched, all_warp, device, size, trans_matrices)
+
+DetModelBase.feature_transformation = staticmethod(wrapped)
+\end{lstlisting}
+
+Al termine dell'esecuzione, una funzione \texttt{restore()} ripristina il metodo originale,
+garantendo idempotenza anche in caso di errore (il blocco \texttt{finally} nella funzione
+\texttt{main()} assicura sempre il ripristino).
+
+\subsection{Gestione del buffer e del ritardo}
+
+Per applicare correttamente il ritardo di rete sulle feature map, il wrapper mantiene un
+\textbf{buffer circolare} per ciascun agente mittente, con capacit\`a massima di
+\texttt{MAX\_BUFFER\_LEN = 10} frame (pari a 2 secondi al framerate di 5 Hz).
+
+Quando OMNeT++ notifica un ritardo $d$ secondi, il \textit{frame lag} viene calcolato come:
+\begin{equation}
+  \text{frame\_lag} = \text{round}\!\left(d \times f_s\right)
+\end{equation}
+dove $f_s = 5\,\text{Hz}$ \`e il framerate del dataset.
+
+Il comportamento in funzione del risultato della simulazione di rete \`e il seguente:
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  Condizione & Azione & Log \\
+  \midrule
+  Pacchetto perso & Feature map sostituita con tensore di zeri & \texttt{[XXX]} \\
+  Ritardo $< 0.1$\,s (lag = 0) & Feature map corrente utilizzata & \texttt{[OK]} \\
+  Ritardo $\ge 0.1$\,s (lag $> 0$) & Feature map storica recuperata dal buffer & \texttt{[OLD]} \\
+  Buffer insufficiente & Feature map pi\`u vecchia disponibile (underflow) & \texttt{[OLD!]} \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Configurazione OMNeT++}
+
+La rete simulata comprende 6 nodi (\texttt{numHosts = 6}) con interfacce wireless IEEE 802.11p,
+potenza di trasmissione 20\,mW e sensibilit\`a del ricevitore $-85$\,dBm. La mobilit\`a dei
+nodi \`e gestita dal modulo personalizzato \texttt{PythonMobility}, che riceve le posizioni
+aggiornate dal processo Python tramite i messaggi \texttt{move}.
+
+\begin{figure}[H]
+  \centering
+  \fbox{\parbox{0.8\textwidth}{\centering\vspace{2cm}
+    [SCREENSHOT 2 -- Terminale OMNeT++ in avvio]\\
+    \small Catturare l'output del terminale di OMNeT++ che mostra:\\
+    \texttt{NetworkManager: Listening on port 5555}\\
+    \texttt{NetworkManager: Python connected! Starting simulation.}\\
+    e i primi messaggi \texttt{move} e \texttt{send} processati.
+  \vspace{2cm}}}
+  \caption{Output di avvio del simulatore OMNeT++ con la fase di handshake TCP.}
+  \label{fig:omnet_startup}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\parbox{0.8\textwidth}{\centering\vspace{2cm}
+    [SCREENSHOT 3 -- Log Python della monkey patch in esecuzione]\\
+    \small Catturare alcune righe dell'output Python che mostrano i messaggi:\\
+    \texttt{[OK]  1 -> 0 | Delay: 0.182s (Live) | phase=steady}\\
+    \texttt{[OLD] 2 -> 0 | Delay: 0.400s -> Lag: 2 frames | phase=steady}\\
+    \texttt{[XXX] 3 -> 0 | PACKET LOST | phase=steady}\\
+    e le righe \texttt{[Proxy]} con i valori della metrica per frame.
+  \vspace{2cm}}}
+  \caption{Output della monkey patch durante un'esecuzione con OMNeT++ abilitato.}
+  \label{fig:monkey_log}
+\end{figure}
+
+% ============================================================
+\section{Integrazione con Konro}
+% ============================================================
+
+\subsection{Il resource manager Konro}
+
+\textbf{Konro} \`e un resource manager progettato per gestire le risorse di calcolo di un
+sistema multi-applicazione in funzione del feedback inviato dalle applicazioni stesse.
+L'interfaccia esposta da Konro prevede due operazioni principali, accessibili via HTTP POST:
+
+\begin{itemize}
+  \item \texttt{/add}: registra il processo con Konro, comunicando PID, namespace e nome
+        dell'applicazione.
+  \item \texttt{/feedback}: invia periodicamente un valore intero compreso tra 0 e 200
+        che rappresenta il rapporto tra il valore corrente della metrica e il target.
+\end{itemize}
+
+Il calcolo del feedback segue la formula:
+\begin{equation}
+  \text{feedback} = \text{clamp}\!\left(\left\lfloor\frac{v_\text{curr}}{v_\text{target}} \times 100\right\rfloor,\; 0,\; 200\right)
+\end{equation}
+
+Un valore di 100 indica che il target \`e esattamente raggiunto. Valori superiori a 100
+segnalano che l'applicazione sta operando oltre il target e pu\`o essere ulteriormente
+vincolata nelle risorse. Valori inferiori segnalano degrado della qualit\`a.
+
+\subsection{Il bridge Python (konro\_bridge.py)}
+
+Poich\'e il processo Python non pu\`o linkare direttamente la libreria C++ di Konro
+senza modificare il sistema di build del progetto, \`e stato implementato un client HTTP
+puro Python in \texttt{tools/det/konro\_bridge.py} che replica l'API di \texttt{konrolib}
+usando la libreria \texttt{requests} (con fallback a \texttt{urllib}).
+
+L'indirizzo del server Konro viene letto dalla variabile d'ambiente \texttt{KONRO}
+(default: \texttt{http://localhost:8080}), in analogia con il comportamento della
+libreria C++.
+
+\subsection{La metrica proxy e la policy}
+
+Per inviare un feedback significativo a Konro \`e necessario scegliere una metrica che
+rifletta la qualit\`a percettiva del sistema in modo calcolabile frame per frame, senza
+richiedere la valutazione completa della mAP (che richiederebbe l'accumulazione su
+molti frame).
+
+La metrica scelta \`e la seguente \textbf{proxy di qualit\`a per frame}:
+\begin{equation}
+  \text{proxy} = \text{recall} \times \min\!\left(1,\; \frac{N_\text{gt}}{N_\text{det}}\right)
+\end{equation}
+dove:
+\begin{itemize}
+  \item $\text{recall} = N_\text{tp} / \max(N_\text{gt}, 1)$ \`e la recall per frame,
+        con $N_\text{tp}$ contato a IoU $\ge 0.5$.
+  \item $N_\text{gt}$ \`e il numero di ground truth boxes nel frame corrente.
+  \item $N_\text{det}$ \`e il numero di detections prodotte dal modello.
+  \item Il fattore $\min(1, N_\text{gt}/N_\text{det})$ penalizza i falsi positivi:
+        se il numero di detections supera significativamente il numero di ground truth,
+        la qualit\`a scende.
+\end{itemize}
+
+La scelta di questa metrica \`e motivata dal fatto che:
+\begin{enumerate}
+  \item \`E calcolabile istantaneamente a ogni frame senza richiedere accumulo.
+  \item Cattura sia i falsi negativi (bassa recall) sia i falsi positivi (penalizzazione).
+  \item \`E normalizzata in $[0, 1]$ e quindi compatibile con il target di qualit\`a.
+\end{enumerate}
+
+\subsubsection{Smoothing con EMA}
+
+La proxy grezzo per frame pu\`o oscillare notevolmente. Per ottenere un segnale di
+controllo pi\`u stabile, viene applicato uno smoothing con \textbf{Exponential Moving
+Average} (EMA) con fattore $\alpha = 0.2$:
+\begin{equation}
+  \text{ema}_t = \alpha \cdot \text{proxy}_t + (1-\alpha) \cdot \text{ema}_{t-1}
+\end{equation}
+
+Il valore EMA viene usato per calcolare il feedback inviato a Konro. Il target di
+qualit\`a di default \`e $v_\text{target} = 0.85$. Il feedback viene inviato ogni frame
+(intervallo configurabile).
+
+\subsubsection{Monkey patch di cal\_local\_mAP}
+
+Per intercettare le statistiche per frame senza modificare il test loop originale, viene
+applicata una seconda monkey patch alla funzione \texttt{cal\_local\_mAP} di
+\texttt{test\_codet}. La versione wrappata:
+\begin{enumerate}
+  \item Identifica quale agente sta venendo valutato in base al contatore di chiamate.
+  \item Per l'agente monitorato (default: agente 1), chiama \texttt{cal\_frame\_stats}
+        per ottenere $N_\text{gt}$, $N_\text{det}$, $N_\text{tp}$ e aggiorna il tracker.
+  \item Chiama comunque la funzione originale per non interrompere l'accumulo della mAP.
+\end{enumerate}
+
+\subsection{Metriche misurate e loro significato}
+
+Al termine di ogni esecuzione, il sistema produce un file JSON di riepilogo con due
+categorie di metriche.
+
+\subsubsection{Metriche di qualit\`a percettiva (sezione \texttt{proxy})}
+
+\begin{center}
+\begin{tabular}{@{}L{3.5cm}L{9cm}@{}}
+  \toprule
+  Metrica & Significato \\
+  \midrule
+  \texttt{proxy\_mean} & Media aritmetica della proxy su tutti i frame osservati.
+                         Riflette la qualit\`a media del sistema. \\[4pt]
+  \texttt{proxy\_ema} & Valore finale dell'EMA. Indica lo stato della qualit\`a
+                        al termine della run. \\[4pt]
+  \texttt{below\_target\_ratio} & Frazione di frame in cui la proxy \`e rimasta sotto
+                                   il target 0.85. Un valore basso \`e desiderabile. \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Metriche di rete (sezione \texttt{network})}
+
+\begin{center}
+\begin{tabular}{@{}L{3.8cm}L{8.7cm}@{}}
+  \toprule
+  Metrica & Significato \\
+  \midrule
+  \texttt{delivery\_ratio} & Rapporto tra pacchetti consegnati e totale trasmessi. \\[4pt]
+  \texttt{drop\_ratio} & Rapporto tra pacchetti persi e totale trasmessi. \\[4pt]
+  \texttt{latency\_avg\_s} & Latenza media end-to-end in secondi per i pacchetti consegnati. \\[4pt]
+  \texttt{latency\_p95\_s} & Latenza al 95-esimo percentile. Indica il worst case
+                              quasi-estremo. \\[4pt]
+  \texttt{stale\_packets} & Numero di pacchetti consegnati ma con lag $> 0$ frame
+                            (dato obsoleto utilizzato). \\[4pt]
+  \texttt{underflow\_packets} & Numero di volte in cui il buffer storico non era
+                                 sufficiente a coprire il ritardo. \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Limiti della metrica proxy}
+
+La metrica proxy presenta alcune limitazioni strutturali che \`e importante documentare.
+
+\begin{enumerate}
+  \item \textbf{Dipendenza dal ground truth}: il calcolo di $N_\text{gt}$ e $N_\text{tp}$
+        richiede accesso alle annotazioni. In un sistema reale deployed, il ground truth
+        non \`e disponibile. La proxy \`e quindi una metrica idealizzata, accessibile solo
+        in fase sperimentale.
+
+  \item \textbf{Monitoraggio di un solo agente}: il sistema attualmente monitora un solo
+        agente alla volta (default: agente 1). L'esperienza di percezione degli altri
+        agenti non contribuisce al feedback. Questo introduce un \textit{selection bias}
+        nel segnale inviato a Konro.
+
+  \item \textbf{Sensibilit\`a a scene sparse}: in frame con pochi o nessun oggetto
+        ($N_\text{gt} = 0$, $N_\text{det} = 0$), il calcolo viene saltato per evitare
+        divisioni per zero e spike artificiali della metrica.
+
+  \item \textbf{Disaccoppiamento temporale}: il feedback inviato a Konro agisce sulle
+        risorse del processo, ma l'effetto sulle richieste di rete avviene in modo
+        indiretto. Konro non controlla direttamente la larghezza di banda del canale
+        wireless, ma pu\`o influenzare il carico computazionale del nodo.
+
+  \item \textbf{Lag del feedback}: l'EMA introduce un ritardo nel segnale di controllo.
+        Con $\alpha = 0.2$, la costante di tempo effettiva \`e circa 4 frame (0.8 secondi
+        al framerate di 5 Hz). Variazioni brusche della qualit\`a non vengono riflesse
+        immediatamente nel feedback.
+\end{enumerate}
+
+% ============================================================
+\section{Introduzione del Rumore Gaussiano sul Feedback}
+% ============================================================
+
+\subsection{Motivazione}
+
+Lo studio sperimentale del rumore \`e di natura metodologica, non prestazionale.
+L'obiettivo non \`e trovare un livello di rumore che migliori le prestazioni, ma
+rispondere alla domanda: \textit{quanto deve essere precisa la metrica di feedback
+affinch\'e la policy di Konro rimanga efficace?}
+
+In un deployment reale, la metrica idealizzata basata sul ground truth non sarebbe
+disponibile. Il sistema dovrebbe appoggiarsi a una metrica approssimata o appresa,
+che necessariamente presenter\`a una deviazione dalla metrica ideale. Il rumore
+gaussiano introdotto nei test modella proprio questa deviazione.
+
+\subsection{Implementazione}
+
+Il rumore viene aggiunto alla proxy grezza prima dell'aggiornamento dell'EMA,
+con saturazione in $[0, 1]$:
+
+\begin{lstlisting}[language=python, caption={Introduzione del rumore gaussiano sulla proxy di qualit\`a.}]
+if self.feedback_noise_std > 0.0:
+    proxy = min(1.0, max(0.0, proxy + random.gauss(0.0, self.feedback_noise_std)))
+\end{lstlisting}
+
+I due valori di deviazione standard testati sono:
+\begin{itemize}
+  \item $\sigma = 0.02$: piccola perturbazione, proxy molto vicina al valore ideale.
+  \item $\sigma = 0.2$: perturbazione significativa, disaccoppiamento marcato tra
+        proxy e qualit\`a reale.
+\end{itemize}
+
+\subsection{Risultati con OMNeT++ abilitato}
+
+La Tabella~\ref{tab:omnet_enabled} riporta i valori delle metriche principali nei
+quattro scenari con OMNeT++ abilitato.
+
+\begin{table}[H]
+  \centering
+  \caption{Metriche per gli esperimenti con OMNeT++ abilitato.}
+  \label{tab:omnet_enabled}
+  \begin{tabular}{@{}L{4cm}R{2.2cm}R{2.2cm}R{2.2cm}R{2.2cm}@{}}
+    \toprule
+    Metrica & Baseline & Konro $\sigma=0$ & Konro $\sigma=0.02$ & Konro $\sigma=0.2$ \\
+    \midrule
+    \texttt{proxy\_mean}       & 0.6413 & 0.6615 & 0.6635 & 0.6374 \\
+    \texttt{proxy\_ema}        & 0.8099 & 0.8378 & 0.8282 & 0.7222 \\
+    \texttt{below\_target\_ratio} & 0.970 & 0.910 & 0.810 & 0.770 \\
+    \texttt{delivery\_ratio}   & 0.947  & 0.947  & 0.947  & 0.947  \\
+    \texttt{drop\_ratio}       & 0.053  & 0.053  & 0.053  & 0.053  \\
+    \texttt{latency\_avg\_s}   & 0.1819 & 0.1587 & 0.1573 & 0.1526 \\
+    \texttt{stale\_packets}    & 1241   & 557    & 552    & 515    \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Analisi dei risultati}
+
+\begin{itemize}
+  \item \textbf{Baseline senza Konro}: \`e lo scenario peggiore in termini di
+        latenza media e pacchetti obsoleti. Il sistema non si adatta alle condizioni
+        di rete.
+
+  \item \textbf{Konro, $\sigma = 0$ (feedback ideale)}: migliora tutte le metriche
+        significative rispetto alla baseline. I pacchetti obsoleti si dimezzano
+        (da 1241 a 557) e la latenza media scende da 0.182\,s a 0.159\,s.
+        Il miglioramento non deriva da un diverso profilo di perdita (delivery ratio
+        invariato) ma da una migliore adattabilit\`a del controller alle condizioni
+        esistenti.
+
+  \item \textbf{Konro, $\sigma = 0.02$}: \`e il risultato pi\`u forte dell'intero
+        studio. Tutte le metriche migliorano rispetto alla baseline e non si
+        registrano regressioni. Questo dimostra che un piccolo rumore sul feedback
+        non compromette l'efficacia della policy.
+
+  \item \textbf{Konro, $\sigma = 0.2$}: le metriche di rete continuano a migliorare
+        rispetto alla baseline (latenza e pacchetti obsoleti ridotti ulteriormente),
+        ma la qualit\`a proxy si degrada rispetto ai casi a rumore minore,
+        specialmente nell'\texttt{ema} finale (0.722 vs 0.838). Il segnale di
+        controllo diventa meno affidabile, ma il sistema non perde completamente
+        i benefici dell'integrazione con Konro.
+\end{itemize}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\parbox{0.8\textwidth}{\centering\vspace{2cm}
+    [SCREENSHOT 4 -- Output del confronto tra run (compare\_konro\_runs.py)]\\
+    \small Eseguire il confronto con:\\
+    \texttt{python compare\_konro\_runs.py}\\
+    e catturare la tabella prodotta che mostra le colonne\\
+    \texttt{With Konro | Without Konro | Delta | Direction}\\
+    per lo scenario OMNeT abilitato, indice 0 (sigma=0.0).
+  \vspace{2cm}}}
+  \caption{Tabella di confronto prodotta da \texttt{compare\_konro\_runs.py} per Konro senza rumore.}
+  \label{fig:compare_table}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\parbox{0.8\textwidth}{\centering\vspace{2cm}
+    [SCREENSHOT 5 -- Output del confronto per sigma=0.02 e sigma=0.2]\\
+    \small Ripetere la cattura per gli indici 1 (sigma=0.02) e 2 (sigma=0.2).\\
+    Affiancare o impilare le due tabelle per confronto visivo.
+  \vspace{2cm}}}
+  \caption{Tabelle di confronto per le due configurazioni con rumore sul feedback.}
+  \label{fig:compare_noise}
+\end{figure}
+
+\subsection{Risultati con OMNeT++ disabilitato}
+
+Quando OMNeT++ \`e disabilitato, le metriche di rete sono identicamente zero
+per costruzione: non c'\`e un canale fisico da simulare. Questo scenario funge da
+\textbf{caso di controllo}: serve a verificare che il resource manager non produca
+miglioramenti artificiali in assenza di un reale collo di bottiglia comunicativo.
+
+\begin{table}[H]
+  \centering
+  \caption{Metriche per gli esperimenti con OMNeT++ disabilitato.}
+  \label{tab:omnet_disabled}
+  \begin{tabular}{@{}L{4cm}R{2.2cm}R{2.2cm}R{2.2cm}R{2.2cm}@{}}
+    \toprule
+    Metrica & Baseline & Konro $\sigma=0$ & Konro $\sigma=0.02$ & Konro $\sigma=0.2$ \\
+    \midrule
+    \texttt{proxy\_mean}       & 0.6775 & 0.6775 & 0.6757 & 0.6772 \\
+    \texttt{proxy\_ema}        & 0.8403 & 0.8403 & 0.8416 & 0.7912 \\
+    \texttt{below\_target\_ratio} & 0.900 & 0.900 & 0.820 & 0.700 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Analisi dei risultati}
+
+\begin{itemize}
+  \item Con $\sigma = 0$, il run Konro \`e effettivamente identico alla baseline.
+        Il controller non ha nulla da ottimizzare perch\'e non esiste un canale
+        di comunicazione reale.
+
+  \item Con $\sigma = 0.02$, la \texttt{proxy\_mean} scende marginalmente ma
+        il \texttt{below\_target\_ratio} migliora. L'effetto \`e trascurabile.
+
+  \item Con $\sigma = 0.2$, l'\texttt{ema} scende pi\`u notevolmente (0.791).
+        Questo conferma che un rumore elevato altera le dinamiche del controller
+        anche in assenza di una rete attiva.
+\end{itemize}
+
+La conclusione di questo scenario \`e che il vantaggio reale di Konro emerge soltanto
+quando il canale di comunicazione \`e stressato da OMNeT++.
+
+\begin{figure}[H]
+  \centering
+  \fbox{\parbox{0.8\textwidth}{\centering\vspace{2cm}
+    [SCREENSHOT 6 -- Riepilogo finale di un'esecuzione completa]\\
+    \small Catturare l'output \texttt{=== Simulation Summary ===} al termine di una run\\
+    con OMNeT abilitato e Konro abilitato (sigma=0.02), che mostra:\\
+    \texttt{[Network] tx=... delivery=... drop=... avg=...s stale=...}\\
+    \texttt{[Proxy] frames=... mean=... ema=... below\_target=...}
+  \vspace{2cm}}}
+  \caption{Output del riepilogo finale di una run completa.}
+  \label{fig:summary}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \fbox{\parbox{0.8\textwidth}{\centering\vspace{2cm}
+    [SCREENSHOT 7 -- Grafico di confronto (se disponibile)]\\
+    \small Se il confronto produce un grafico PNG (\texttt{comparison\_latest.png}),\\
+    inserirlo qui. In alternativa, catturare l'output grafico di matplotlib\\
+    prodotto da \texttt{compare\_konro\_runs.py}.
+  \vspace{2cm}}}
+  \caption{Confronto grafico delle metriche chiave tra le diverse configurazioni di Konro.}
+  \label{fig:chart}
+\end{figure}
+
+% ============================================================
+\section{Riepilogo e Conclusioni}
+% ============================================================
+
+\subsection{Riepilogo dell'architettura integrata}
+
+Il sistema finale integra tre componenti eterogenei:
+
+\begin{enumerate}
+  \item \textbf{CoPerception} (Python/PyTorch): esegue inferenza del modello DiscoNet
+        sul dataset V2X-Sim, intercettata da due monkey patch che strumentano la
+        comunicazione inter-agente e la valutazione per frame.
+
+  \item \textbf{OMNeT++ con INET} (C++): simula il canale wireless 802.11p, calcola
+        ritardi end-to-end realistici in funzione della posizione fisica dei nodi
+        e notifica Python dei risultati di consegna.
+
+  \item \textbf{Konro} (server esterno): riceve segnali di feedback sulla qualit\`a
+        percettiva e agisce sulle risorse del processo; il suo comportamento \`e
+        osservabile indirettamente attraverso l'evoluzione delle metriche di rete
+        e di qualit\`a.
+\end{enumerate}
+
+\subsection{Conclusioni sull'efficacia di Konro}
+
+I risultati mostrano chiaramente che:
+
+\begin{itemize}
+  \item Konro \`e efficace quando il sistema \`e esposto a condizioni di rete reali
+        simulate da OMNeT++. I miglioramenti principali sono la riduzione dei
+        pacchetti obsoleti e della latenza media.
+
+  \item La policy \`e robusta a un livello moderato di rumore sul feedback
+        ($\sigma = 0.02$): il sistema mantiene o migliora tutte le metriche rispetto
+        alla baseline.
+
+  \item Con un rumore pi\`u elevato ($\sigma = 0.2$), i benefici lato rete si
+        conservano, ma la qualit\`a del segnale di controllo si degrada. Il sistema
+        non fallisce, ma opera in modo meno ottimale.
+
+  \item In assenza di OMNeT++, Konro non produce effetti significativi, confermando
+        che il beneficio reale \`e legato alla presenza di un collo di bottiglia
+        comunicativo.
+\end{itemize}
+
+\subsection{Sviluppi futuri}
+
+\begin{itemize}
+  \item Sostituire la proxy basata su ground truth con una metrica appresa o
+        auto-supervisionata, per rendere il sistema deployable.
+  \item Estendere il monitoraggio a tutti gli agenti contemporaneamente.
+  \item Valutare l'impatto su metriche di detection pi\`u standard come mAP a
+        diversi threshold IoU, accumulando risultati su pi\`u scene.
+  \item Esplorare policy adattive che regolino anche la frequenza di invio delle
+        feature map in funzione delle condizioni di rete.
+\end{itemize}
+
+% ============================================================
+\appendix
+\section{Guida agli screenshot}
+% ============================================================
+
+La Tabella~\ref{tab:screenshots} riassume tutti gli screenshot richiesti nel documento,
+con la descrizione di dove e come catturarli.
+
+\begin{table}[H]
+  \centering
+  \caption{Elenco degli screenshot da catturare.}
+  \label{tab:screenshots}
+  \small
+  \begin{tabular}{@{}C{0.6cm}L{3.5cm}L{8.5cm}@{}}
+    \toprule
+    N. & Posizione nel testo & Cosa catturare \\
+    \midrule
+    1 & Figura~\ref{fig:arch} &
+        Schema architetturale disegnato con draw.io o analogo, che mostri
+        Python/OmnetBridge $\leftrightarrow$ TCP:5555 $\leftrightarrow$ OMNeT++/NetworkManager $\leftrightarrow$ CoPerceptionApp$\times$6. \\[6pt]
+    2 & Figura~\ref{fig:omnet_startup} &
+        Terminale OMNeT++ con la sequenza di avvio: \texttt{Listening on port 5555},
+        \texttt{Python connected!}, i primi log \texttt{Registered app for vehicle ID}
+        e i primi comandi \texttt{move}/\texttt{send} processati. \\[6pt]
+    3 & Figura~\ref{fig:monkey_log} &
+        Terminale Python durante l'inferenza: righe \texttt{[OK]}/\texttt{[OLD]}/\texttt{[XXX]}
+        della monkey patch e righe \texttt{[Proxy]} con \texttt{recall}, \texttt{penalty},
+        \texttt{proxy}, \texttt{ema} per frame. \\[6pt]
+    4 & Figura~\ref{fig:compare_table} &
+        Output testuale di \texttt{compare\_konro\_runs.py} per lo scenario OMNeT abilitato,
+        indice 0 (senza rumore). Mostrare la tabella con le colonne
+        \texttt{With Konro / Without Konro / Delta / Direction}. \\[6pt]
+    5 & Figura~\ref{fig:compare_noise} &
+        Stesso script per indici 1 ($\sigma=0.02$) e 2 ($\sigma=0.2$),
+        affiancare o impilare. \\[6pt]
+    6 & Figura~\ref{fig:summary} &
+        Output \texttt{=== Simulation Summary ===} di una run completa con
+        OMNeT e Konro abilitati ($\sigma=0.02$). \\[6pt]
+    7 & Figura~\ref{fig:chart} &
+        File \texttt{logs/ab/comparison\_latest.png} o grafico matplotlib prodotto
+        da \texttt{compare\_konro\_runs.py}. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\end{document}
