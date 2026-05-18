@@ -202,10 +202,13 @@ class When2com(IntermediateModelBase):
             )  # [2 5 512 16 16] [batch, agent, channel, height, width]
             for b in range(batch_size):
                 num_agent = num_agent_tensor[b, 0]
-                for i in range(num_agent):
+                # Use the actual size of local_com_mat to avoid index out of bounds
+                # when the dataset has fewer agents than declared in num_agent_tensor
+                actual_num_agent = min(int(num_agent), local_com_mat.shape[1])
+                for i in range(actual_num_agent):
                     tg_agent = local_com_mat[b, i]
                     all_warp = trans_matrices[b, i]  # transformation [2 5 5 4 4]
-                    for j in range(num_agent):
+                    for j in range(actual_num_agent):
                         if j == i:
                             val_mat[b, i, j] = tg_agent
                         else:

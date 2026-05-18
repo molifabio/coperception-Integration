@@ -65,16 +65,19 @@ class V2VNet(IntermediateModelBase):
 
         for b in range(batch_size):
             num_agent = num_agent_tensor[b, 0]
+            # Use the actual size of local_com_mat to avoid index out of bounds
+            # when the dataset has fewer agents than declared in num_agent_tensor
+            actual_num_agent = min(int(num_agent), local_com_mat.shape[1])
             
             agent_feat_list = list()
-            for nb in range(self.agent_num):
+            for nb in range(actual_num_agent):
                 agent_feat_list.append(local_com_mat[b, nb])
                 
             for _ in range(self.gnn_iter_num):
 
                 updated_feats_list = []
 
-                for i in range(num_agent):
+                for i in range(actual_num_agent):
                     self.neighbor_feat_list = []
                     all_warp = trans_matrices[b, i]  # transformation [2 5 5 4 4]
 
@@ -86,7 +89,7 @@ class V2VNet(IntermediateModelBase):
                             b,
                             i,
                             all_warp,
-                            num_agent,
+                            actual_num_agent,
                             local_com_mat,
                             device,
                             size,
@@ -106,7 +109,7 @@ class V2VNet(IntermediateModelBase):
 
                 agent_feat_list = updated_feats_list
 
-            for k in range(num_agent):
+            for k in range(actual_num_agent):
                 local_com_mat_update[b, k] = agent_feat_list[k]
         
         feat_maps = super().agents_to_batch(local_com_mat_update)

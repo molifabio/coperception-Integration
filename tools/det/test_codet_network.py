@@ -697,6 +697,12 @@ def build_parser():
         type=str,
         help="Optional path to a JSON summary report for run-to-run comparison",
     )
+    parser.add_argument(
+        "--plot_out",
+        default="",
+        type=str,
+        help="Optional path (.png/.pdf) where the per-run PU+recall chart is saved",
+    )
 
     # ------------------------------------------------------------------
     # Konro integration options
@@ -746,8 +752,80 @@ def build_parser():
     return parser
 
 
-def patch_cal_local_mAP(
-    tracker: PerceptionProxyTracker,
+
+def _generate_run_plot(
+    frames_history: list,
+    target_quality: float,
+    konro_enabled: bool,
+    plot_path: str,
+) -> None:
+    """Generate a dual-axis chart: PU count (left) and recall (right) vs frame number."""
+    try:
+        import matplotlib  # type: ignore
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt  # type: ignore
+        import matplotlib.ticker as mticker  # type: ignore
+    except ImportError:
+        print("[Plot] matplotlib not available — skipping plot generation")
+        return
+
+    if not frames_history:
+        print("[Plot] No per-frame data available — skipping plot")
+        return
+
+    frames    = [f["frame"]     for f in frames_history]
+    recall    = [f["recall"]    for f in frames_history]
+    ema       = [f["ema"]       for f in frames_history]
+    num_pus   = [f["num_pus"]   for f in frames_history]
+
+    fig, ax1 = plt.subplots(figsize=(14, 5))
+
+    # ── Left axis: PU count ──────────────────────────────────────────
+    color_pu = "#1976D2"
+    ax1.set_xlabel("Frame")
+    ax1.set_ylabel("PU allocate", color=color_pu)
+    # Use step-plot so each allocation change is visible as a staircase
+    valid_pus = [p for p in num_pus if p > 0]
+    if valid_pus:
+        ax1.step(frames, num_pus, where="post", color=color_pu,
+                 linewidth=2.0, label="PU allocate")
+        ax1.fill_between(frames, num_pus, step="post", alpha=0.15, color=color_pu)
+        ax1.set_ylim(0, max(valid_pus) + 2)
+    else:
+        ax1.set_ylim(0, 4)
+    ax1.tick_params(axis="y", labelcolor=color_pu)
+    ax1.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+
+    # ── Right axis: recall ───────────────────────────────────────────
+    color_recall = "#E53935"
+    color_ema    = "#FB8C00"
+    ax2 = ax1.twinx()
+    ax2.set_ylabel("Recall per frame", color=color_recall)
+    ax2.plot(frames, recall, color=color_recall, linewidth=1.0, alpha=0.45, label="Recall")
+    ax2.plot(frames, ema,    color=color_ema,    linewidth=1.8, label=f"EMA recall (α={0.2})")
+    ax2.axhline(y=target_quality, color="gray", linestyle="--",
+                linewidth=1.0, label=f"Target ({target_quality})")
+    ax2.tick_params(axis="y", labelcolor=color_recall)
+    ax2.set_ylim(0.0, 1.05)
+
+    konro_label = "Konro attivo" if konro_enabled else "Konro disabilitato"
+    plt.title(f"Allocazione PU e Recall per frame — {konro_label}")
+
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax2.legend(lines1 + lines2, labels1 + labels2, loc="lower right", fontsize=8)
+
+    fig.tight_layout()
+    try:
+        plt.savefig(plot_path, dpi=150, bbox_inches="tight")
+        print(f"[Plot] Saved run chart → {plot_path}")
+    except Exception as exc:
+        print(f"[Plot] Failed to save chart: {exc}")
+    finally:
+        plt.close(fig)
+
+
+def patch_cal_local_mAP(    tracker: PerceptionProxyTracker,
     iou_thr: float = 0.5,
     target_agent_id: int = 1,
     rsu: int = 0,
@@ -860,6 +938,10 @@ def main():
         traceback.print_exc()
         run_successful = False
     finally:
+        # Stop Konro feedback first, before any cleanup, to prevent in-flight
+        # HTTP posts from arriving after Konro has already removed this PID.
+        if tracker is not None:
+            tracker.shutdown()
         # Assicura che la patch venga rimossa e il bridge chiuso anche in caso di errore
         restore_konro_hook()
         restore_hook()
@@ -927,6 +1009,14 @@ def main():
                 print(f"[Summary] Appended run report to {args.summary_out}")
             else:
                 print(f"[Summary] Test FAILED early. Skipping JSON report (empty) to avoid confusion -> {args.summary_out}")
+
+        if args.plot_out and tracker is not None:
+            _generate_run_plot(
+                frames_history=proxy_summary.get("frames_history", []),
+                target_quality=args.konro_target,
+                konro_enabled=args.konro_enable,
+                plot_path=args.plot_out,
+            )
 
         if bridge is not None:
             bridge.close()

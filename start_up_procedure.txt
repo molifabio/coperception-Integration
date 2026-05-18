@@ -91,19 +91,19 @@ python test_coseg_network.py \
 
 cmd 3a (Client, det, konro ON, OMNeT ON - una riga)
 
-conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --network_host 127.0.0.1 --network_port 5555 --konro_enable --konro_target 0.80 --konro_interval 1 --konro_agent_id 1 --summary_out ~/coperception/coperception-Integration/logs/ab/with_konro_with_omnet_history.json --scene_id 29 --konro_feedback_noise_std 0.2
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --network_host 127.0.0.1 --network_port 5555 --konro_enable --konro_target 0.80 --konro_interval 1 --konro_agent_id 1 --summary_out ~/coperception/coperception-Integration/logs/ab/with_konro_with_omnet_history.json --plot_out ~/coperception/coperception-Integration/logs/ab/run_chart_konro_on_omnet_on.png --scene_id 29 --konro_feedback_noise_std 0.2
 
 cmd 3b (Client, det, konro ON, OMNeT OFF- una riga)
 
-conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --konro_enable --konro_target 0.80 --konro_interval 1 --network_disable --konro_agent_id 1 --summary_out ~/coperception/coperception-Integration/logs/ab/with_konro_without_omnet_history.json --scene_id 29 --konro_feedback_noise_std 0.2
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --konro_enable --konro_target 0.80 --konro_interval 1 --network_disable --konro_agent_id 1 --summary_out ~/coperception/coperception-Integration/logs/ab/with_konro_without_omnet_history.json --plot_out ~/coperception/coperception-Integration/logs/ab/run_chart_konro_on_omnet_off.png --scene_id 29 --konro_feedback_noise_std 0.2
 
 cmd 3c (Client, det, konro OFF, OMNeT ON - una riga)
 
-conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --network_host 127.0.0.1 --network_port 5555 --konro_target 0.80 --summary_out ~/coperception/coperception-Integration/logs/ab/without_konro_with_omnet_history.json --scene_id 29
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --network_host 127.0.0.1 --network_port 5555 --konro_target 0.80 --summary_out ~/coperception/coperception-Integration/logs/ab/without_konro_with_omnet_history.json --plot_out ~/coperception/coperception-Integration/logs/ab/run_chart_konro_off_omnet_on.png --scene_id 29
 
 cmd 3d (Client, det, konro OFF, OMNeT OFF - una riga)
 
-conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --konro_target 0.85 --network_disable --summary_out ~/coperception/coperception-Integration/logs/ab/without_konro_without_omnet_history.json --scene_id 29
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python test_codet_network.py --com disco --data ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-det/test --resume ~/coperception/coperception-Integration/data/V2X-Sim/V2X-Sim-2.0/checkpoints/det/disco/no_rsu/epoch_100.pth --logpath ~/coperception/coperception-Integration/logs --konro_target 0.85 --network_disable --summary_out ~/coperception/coperception-Integration/logs/ab/without_konro_without_omnet_history.json --plot_out ~/coperception/coperception-Integration/logs/ab/run_chart_konro_off_omnet_off.png --scene_id 29
 
 uso cmd 3x con storico JSON (importante)
 
@@ -146,3 +146,30 @@ cmd 5b (confronta run specifiche tramite indice)
 
   # -1 = ultima run, -2 = penultima, 0 = prima run
 conda activate coperception && cd ~/coperception/coperception-Integration && python tools/det/compare_konro_runs.py --with-konro logs/ab/with_konro_with_omnet_history.json --with-konro-run-index -2 --without-konro logs/ab/without_konro_with_omnet_history.json --without-konro-run-index -2 --out logs/ab/comparison_idx_minus2.json --plot-out logs/ab/comparison_idx_minus2.png
+
+================================================================================
+cmd 6 (Grafici per-frame: recall/precision/F1/conteggi con vs senza Konro)
+================================================================================
+NOTA: richiede runs prodotte con il codice aggiornato (che include frames_history nel JSON).
+      I file di storico accumulano tutte le run; usa --idx-a / --idx-b per scegliere
+      quali confrontare (0 = prima run, -1 = ultima, ecc.).
+
+FORMATO OUTPUT:
+  --out        grafico multi-pannello (recall, precision, F1, num_tp, num_gts, num_dets)
+  --out-overlay grafico singolo dual-axis (PU sinistra + EMA recall destra, entrambe le run)
+  Il formato del file e' determinato dall'estensione (.png, .pdf, .svg, ecc.)
+
+cmd 6a (confronto da 2 file separati - caso tipico con/senza Konro, ultima run)
+
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python plot_comparison.py --file-a ~/coperception/coperception-Integration/logs/ab/with_konro_with_omnet_history.json --file-b ~/coperception/coperception-Integration/logs/ab/without_konro_with_omnet_history.json --idx-file-a=-1 --idx-file-b=-1 --label-a "Con Konro" --label-b "Senza Konro" --out ~/coperception/coperception-Integration/logs/ab/per_frame_comparison.png --out-overlay ~/coperception/coperception-Integration/logs/ab/pu_recall_overlay.png
+
+cmd 6b (confronto da file singolo - 2 run con indici diversi)
+  # --idx-a 0 = prima run, --idx-b 1 = seconda run nel file
+
+conda activate coperception && cd ~/coperception/coperception-Integration/tools/det && python plot_comparison.py --file ~/coperception/coperception-Integration/logs/ab/with_konro_with_omnet_history.json --idx-a 0 --label-a "Run 0" --idx-b 1 --label-b "Run 1" --out ~/coperception/coperception-Integration/logs/ab/per_frame_comparison_same_file.png --out-overlay ~/coperception/coperception-Integration/logs/ab/pu_recall_overlay_same_file.png
+
+cmd 6c (solo grafico PU+recall di una singola run - generato automaticamente con --plot_out)
+  # Gia' integrato in cmd 3a/3b/3c/3d tramite --plot_out
+  # Esempio standalone per ri-generare il grafico da un file esistente:
+  # (non disponibile direttamente, usare plot_comparison.py con stessa run due volte o
+  #  ri-eseguire test_codet_network.py con --plot_out)

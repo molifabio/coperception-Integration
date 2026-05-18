@@ -257,7 +257,7 @@ void WorkloadManager::processFeedbackRequestEvent(std::shared_ptr<const rmcommon
                   (long)event->getPidNamespace(),
                   event->getFeedback());
     } else {
-        cat_.error(R"(WORKLOADMANAGER FeedbackRequest received from process not in Konro {"process_pid":%ld,"namespace":%ld,"feedback_value":%d})",
+        cat_.warn(R"(WORKLOADMANAGER FeedbackRequest received from process not in Konro {"process_pid":%ld,"namespace":%ld,"feedback_value":%d})",
                   (long)event->getPid(),
                   (long)event->getPidNamespace(),
                   event->getFeedback());

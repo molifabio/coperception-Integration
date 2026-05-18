@@ -1,0 +1,83 @@
+{
+  "with_konro": "/home/albert0/coperception/coperception-Integration/logs/ab/with_konro_with_omnet_history.json",
+  "without_konro": "/home/albert0/coperception/coperception-Integration/logs/ab/without_konro_with_omnet_history.json",
+  "metrics": [
+    {
+      "name": "proxy_mean",
+      "with_konro": 0.8033099982447172,
+      "without_konro": 0.828256243756243,
+      "delta_abs": -0.0249462455115258,
+      "delta_pct": -3.011899481541067,
+      "higher_is_better": true
+    },
+    {
+      "name": "proxy_ema",
+      "with_konro": 0.741699864162743,
+      "without_konro": 0.8373127817803394,
+      "delta_abs": -0.09561291761759638,
+      "delta_pct": -11.419020430370006,
+      "higher_is_better": true
+    },
+    {
+      "name": "below_target_ratio",
+      "with_konro": 0.42,
+      "without_konro": 0.14,
+      "delta_abs": 0.27999999999999997,
+      "delta_pct": 199.99999999999994,
+      "higher_is_better": false
+    },
+    {
+      "name": "delivery_ratio",
+      "with_konro": 0.9465,
+      "without_konro": 0.9115,
+      "delta_abs": 0.03500000000000003,
+      "delta_pct": 3.83982446516731,
+      "higher_is_better": true
+    },
+    {
+      "name": "drop_ratio",
+      "with_konro": 0.0535,
+      "without_konro": 0.0885,
+      "delta_abs": -0.034999999999999996,
+      "delta_pct": -39.548022598870055,
+      "higher_is_better": false
+    },
+    {
+      "name": "latency_avg_s",
+      "with_konro": 0.08388187966191243,
+      "without_konro": 0.08342359731212226,
+      "delta_abs": 0.00045828234979017335,
+      "delta_pct": 0.5493437882755752,
+      "higher_is_better": false
+    },
+    {
+      "name": "latency_p95_s",
+      "with_konro": 0.155165,
+      "without_konro": 0.159387,
+      "delta_abs": -0.0042220000000000035,
+      "delta_pct": -2.648898592733412,
+      "higher_is_better": false
+    },
+    {
+      "name": "stale_packets",
+      "with_konro": 790.0,
+      "without_konro": 1060.0,
+      "delta_abs": -270.0,
+      "delta_pct": -25.471698113207548,
+      "higher_is_better": false
+    },
+    {
+      "name": "underflow_packets",
+      "with_konro": 0.0,
+      "without_konro": 0.0,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": false
+    }
+  ],
+  "summary": {
+    "better": 4,
+    "worse": 4,
+    "same": 1
+  }
+}
