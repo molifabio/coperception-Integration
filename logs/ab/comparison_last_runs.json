@@ -1,0 +1,83 @@
+{
+  "with_konro": "logs/ab/with_konro_with_omnet_history.json",
+  "without_konro": "logs/ab/without_konro_with_omnet_history.json",
+  "metrics": [
+    {
+      "name": "proxy_mean",
+      "with_konro": 0.6859880508281276,
+      "without_konro": 0.6437110805860806,
+      "delta_abs": 0.04227697024204702,
+      "delta_pct": 6.567693413566074,
+      "higher_is_better": true
+    },
+    {
+      "name": "proxy_ema",
+      "with_konro": 0.820359930398953,
+      "without_konro": 0.8090700623866518,
+      "delta_abs": 0.011289868012301252,
+      "delta_pct": 1.3954128989765862,
+      "higher_is_better": true
+    },
+    {
+      "name": "below_target_ratio",
+      "with_konro": 0.67,
+      "without_konro": 0.91,
+      "delta_abs": -0.24,
+      "delta_pct": -26.373626373626376,
+      "higher_is_better": false
+    },
+    {
+      "name": "delivery_ratio",
+      "with_konro": 0.985,
+      "without_konro": 0.847,
+      "delta_abs": 0.138,
+      "delta_pct": 16.29279811097993,
+      "higher_is_better": true
+    },
+    {
+      "name": "drop_ratio",
+      "with_konro": 0.015,
+      "without_konro": 0.153,
+      "delta_abs": -0.138,
+      "delta_pct": -90.19607843137256,
+      "higher_is_better": false
+    },
+    {
+      "name": "latency_avg_s",
+      "with_konro": 0.07352292984771577,
+      "without_konro": 0.08749646835891425,
+      "delta_abs": -0.01397353851119848,
+      "delta_pct": -15.970402889723992,
+      "higher_is_better": false
+    },
+    {
+      "name": "latency_p95_s",
+      "with_konro": 0.128041,
+      "without_konro": 0.181193,
+      "delta_abs": -0.053152000000000005,
+      "delta_pct": -29.334466563277832,
+      "higher_is_better": false
+    },
+    {
+      "name": "stale_packets",
+      "with_konro": 315.0,
+      "without_konro": 822.0,
+      "delta_abs": -507.0,
+      "delta_pct": -61.67883211678832,
+      "higher_is_better": false
+    },
+    {
+      "name": "underflow_packets",
+      "with_konro": 0.0,
+      "without_konro": 0.0,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": false
+    }
+  ],
+  "summary": {
+    "better": 8,
+    "worse": 0,
+    "same": 1
+  }
+}

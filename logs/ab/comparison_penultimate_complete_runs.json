@@ -1,0 +1,83 @@
+{
+  "with_konro": "logs/ab/with_konro_with_omnet_history.json",
+  "without_konro": "logs/ab/without_konro_with_omnet_history.json",
+  "metrics": [
+    {
+      "name": "proxy_mean",
+      "with_konro": 0.6374212134944746,
+      "without_konro": 0.6413466117216118,
+      "delta_abs": -0.003925398227137222,
+      "delta_pct": -0.6120556584215827,
+      "higher_is_better": true
+    },
+    {
+      "name": "proxy_ema",
+      "with_konro": 0.7221859365368579,
+      "without_konro": 0.8098991757507255,
+      "delta_abs": -0.08771323921386753,
+      "delta_pct": -10.83014304003494,
+      "higher_is_better": true
+    },
+    {
+      "name": "below_target_ratio",
+      "with_konro": 0.77,
+      "without_konro": 0.97,
+      "delta_abs": -0.19999999999999996,
+      "delta_pct": -20.618556701030926,
+      "higher_is_better": false
+    },
+    {
+      "name": "delivery_ratio",
+      "with_konro": 0.947,
+      "without_konro": 0.947,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": true
+    },
+    {
+      "name": "drop_ratio",
+      "with_konro": 0.053,
+      "without_konro": 0.053,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": false
+    },
+    {
+      "name": "latency_avg_s",
+      "with_konro": 0.15264029197465642,
+      "without_konro": 0.1819417986800402,
+      "delta_abs": -0.029301506705383784,
+      "delta_pct": -16.104879097580497,
+      "higher_is_better": false
+    },
+    {
+      "name": "latency_p95_s",
+      "with_konro": 0.4,
+      "without_konro": 0.4,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": false
+    },
+    {
+      "name": "stale_packets",
+      "with_konro": 515.0,
+      "without_konro": 1241.0,
+      "delta_abs": -726.0,
+      "delta_pct": -58.50120870265915,
+      "higher_is_better": false
+    },
+    {
+      "name": "underflow_packets",
+      "with_konro": 0.0,
+      "without_konro": 0.0,
+      "delta_abs": 0.0,
+      "delta_pct": 0.0,
+      "higher_is_better": false
+    }
+  ],
+  "summary": {
+    "better": 3,
+    "worse": 2,
+    "same": 4
+  }
+}

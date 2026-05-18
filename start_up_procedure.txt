@@ -1,20 +1,42 @@
 ================================================================================
-NETWORK PROFILE CONFIGURATION
+NETWORK SIMULATION (OMNeT++ - IEEE 802.11p)
 ================================================================================
-Il profilo di rete di default usa un degrado progressivo SENZA oscillazioni:
-  - good:20:0.02:0.00 → 20 frame con 20ms delay, 0% packet loss
-  - medium:25:0.08:0.03 → 25 frame con 80ms delay, 3% packet loss  
-  - bad:25:0.15:0.08 → 25 frame con 150ms delay, 8% packet loss
-  - worst:10000:0.25:0.15 → rimane a 250ms delay, 15% packet loss
+La rete è simulata FISICAMENTE da OMNeT++ usando il framework INET.
+NON ci sono "fasi" predefinite - il comportamento dipende dalla fisica reale.
 
-TOTALE: degrado completo in ~70 frame, poi stabile sulla fase worst.
-Scene >100 frame: rimangono nella fase worst (non va in crash).
+COME FUNZIONA IL PACKET LOSS:
+  Il packet loss è determinato da:
+  - Distanza tra veicoli (path loss)
+  - Potenza trasmissione: 20mW
+  - Sensibilità ricevitore: -85dBm
+  - Interferenze radio tra veicoli
+  - Rumore di fondo: -110dBm
 
-Le fasi progrediscono sequenzialmente e NON si ripetono ciclicamente.
+RANGE APPROSSIMATIVO (line-of-sight):
+  - Distanza < 300m:  Ottima comunicazione (0-1% packet loss)
+  - Distanza 300-400m: Buona comunicazione (5-15% packet loss)
+  - Distanza 400-500m: Comunicazione degradata (30-60% packet loss)
+  - Distanza > 500m:  Quasi nessuna comunicazione (>90% packet loss)
+
+DELAY DI RETE:
+  Il delay è calcolato da OMNeT++ basandosi su:
+  - Tempo di propagazione fisica (~3.3 μs/km)
+  - Processing time (codifica/decodifica)
+  - Contention (CSMA/CA wait)
+  Tipicamente: 1-50ms per distanze < 500m
+
+COME PYTHON RILEVA LE PERDITE:
+  - OMNeT++ invia ACK solo per pacchetti arrivati
+  - Python rileva gap nei sequence numbers (es. riceve #1, poi #4 → #2 e #3 persi)
+  - Applica le perdite ai frame successivi (lag di 1-2 frame)
+
+NOTA: Il comportamento della rete cambia DINAMICAMENTE durante la simulazione
+      in base al movimento dei veicoli nella scena.
+
 Per disabilitare completamente OMNeT++ usare: --network_disable
 ================================================================================
 
-cmd 1 (Server):
+cmd 1 (Server OMNeT++):
 
 conda activate coperception
 cd ~/omnetpp-6.0.3
@@ -25,12 +47,19 @@ cd ~/coperception/coperception-Integration/omnet_sim
 #Il server a questo punto dovrebbe essere in attesa
 
 
-cmd 2 (konro)
+cmd 2 (Konro Resource Manager):
+==================================================================================
+Per la compilazione di konro se bisogna aggiornare la versione dopo una modifica:
+cd ~/coperception/coperception-Integration/konro/build
+make clean
+cmake ..
+make -j4
+==================================================================================
 
 cd ~/coperception/coperception-Integration/konro/build/rm && sudo ./konro
 
 
-cmd 3 (Client, det):
+cmd 3 (Client - Detection Test):
 
 conda activate coperception
 cd ~/coperception/coperception-Integration/tools/det
@@ -41,11 +70,12 @@ python test_codet_network.py \
   --logpath ~/coperception/coperception-Integration/logs \
   --network_host 127.0.0.1 \
   --network_port 5555 \
-  --scene_id 29        #opzionale, se omesso esegue tutto
+  --scene_id 29 \
+  --konro_enable \
   --konro_feedback_noise_std 0.0
 
 
-cmd 3 (Client, seg):
+cmd 3 (Client - Segmentation Test):
 
 conda activate coperception
 cd ~/coperception/coperception-Integration/tools/seg

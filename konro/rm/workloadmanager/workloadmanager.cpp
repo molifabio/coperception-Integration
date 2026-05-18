@@ -204,13 +204,15 @@ void WorkloadManager::processExitEvent(std::shared_ptr<const rmcommon::ExitEvent
 {
     const struct proc_event *ev = reinterpret_cast<const struct proc_event *>(&event->data_[0]);
 
-    pid_t pid = ev->event_data.exit.process_pid;
+    // FIX: Use process_tgid (main PID) instead of process_pid (TID) to avoid
+    // removing the application when a thread exits instead of the main process
+    pid_t pid = ev->event_data.exit.process_tgid;
     if (isInKonro(pid)) {
         remove(pid);
 
         cat_.info(R"(WORKLOADMANAGER exit {"process_pid":%ld,"process_name":%s,"process_tgid":%ld})",
                   (long)ev->event_data.exit.process_pid,
-                  getProcessNameByPid(ev->event_data.exit.process_pid).c_str(),
+                  getProcessNameByPid(ev->event_data.exit.process_tgid).c_str(),
                   (long)ev->event_data.exit.process_tgid);
         dumpMonitoredApps();
     }

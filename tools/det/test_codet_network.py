@@ -59,14 +59,6 @@ def _append_summary_history(path: str, entry: Dict[str, Any]) -> None:
 
 
 @dataclass
-class NetworkPhase:
-    name: str
-    frames: int
-    delay_floor_s: float
-    drop_prob: float
-
-
-@dataclass
 class NetworkRuntimeStats:
     tx_total: int = 0
     delivered: int = 0
@@ -76,11 +68,9 @@ class NetworkRuntimeStats:
     stale_packets: int = 0
     underflow_packets: int = 0
     delays_s: List[float] = field(default_factory=list)
-    phase_hits: Dict[str, int] = field(default_factory=dict)
 
-    def record(self, *, delivered: bool, delay_s: float, frames_lag: int, stale: bool, underflow: bool, phase_name: str) -> None:
+    def record(self, *, delivered: bool, delay_s: float, frames_lag: int, stale: bool, underflow: bool) -> None:
         self.tx_total += 1
-        self.phase_hits[phase_name] = self.phase_hits.get(phase_name, 0) + 1
         if delivered:
             self.delivered += 1
             self.delays_s.append(max(0.0, delay_s))
@@ -124,51 +114,10 @@ class NetworkRuntimeStats:
             "latency_p50_s": p50,
             "latency_p95_s": p95,
             "latency_max_s": dmax,
-            "phase_hits": dict(sorted(self.phase_hits.items())),
         }
 
 
-def _parse_network_profile(profile: str) -> List[NetworkPhase]:
-    """
-    Parse profile format:
-    "good:120:0.02:0.00,down:60:0.40:0.15,recover:120:0.08:0.02"
-    Each phase = name:frames:delay_floor_seconds:drop_probability
-    """
-    parsed: List[NetworkPhase] = []
-    for raw_phase in profile.split(","):
-        item = raw_phase.strip()
-        if not item:
-            continue
-        parts = [p.strip() for p in item.split(":")]
-        if len(parts) != 4:
-            raise ValueError(
-                f"Invalid phase '{item}'. Expected name:frames:delay_floor_s:drop_prob"
-            )
-        name = parts[0]
-        frames = max(1, int(parts[1]))
-        delay_floor_s = max(0.0, float(parts[2]))
-        drop_prob = min(1.0, max(0.0, float(parts[3])))
-        parsed.append(NetworkPhase(name, frames, delay_floor_s, drop_prob))
 
-    if not parsed:
-        raise ValueError("Network profile is empty after parsing")
-    return parsed
-
-
-def _phase_for_frame(phases: List[NetworkPhase], frame_idx: int) -> NetworkPhase:
-    """Return the network phase for a given frame index.
-    Phases progress sequentially without cycling - once the last phase is reached, it persists."""
-    if not phases:
-        raise ValueError("phases list cannot be empty")
-    
-    acc = 0
-    for phase in phases:
-        if frame_idx < acc + phase.frames:
-            return phase
-        acc += phase.frames
-    
-    # Once all phases are completed, stay in the last phase
-    return phases[-1]
 
 
 class OmnetBridge:
@@ -412,17 +361,13 @@ class OmnetBridge:
 def patch_feature_transformation(
     bridge: Optional[OmnetBridge],
     dataset_framerate: float = 5.0,
-    phases: Optional[List[NetworkPhase]] = None,
-    rng_seed: int = 123,
 ):
     # Se non c'è un bridge attivo, non fare nulla (nessuna patch)
     if bridge is None:
         return (lambda: None), NetworkRuntimeStats()
 
     stats = NetworkRuntimeStats()
-    phases = phases or [NetworkPhase("steady", frames=10**9, delay_floor_s=0.0, drop_prob=0.0)]
     frame_counter = 0
-    rng = random.Random(rng_seed)
 
     # Salva il metodo originale per poterlo chiamare o ripristinare dopo
     descriptor = DetModelBase.__dict__["feature_transformation"]
@@ -496,8 +441,6 @@ def patch_feature_transformation(
         # Usiamo (j=1, agent_idx=0) come trigger per contare il frame, assumendo almeno 2 agenti.
         if int(b) == 0 and int(agent_idx) == 0 and int(j) == 1:
             frame_counter += 1
-        current_phase = _phase_for_frame(phases, frame_counter)
-        
         
         # Send position updates for sender (j) and receiver (agent_idx) to OMNeT++
         pos_j = _extract_position(trans_matrices, b, j)
@@ -546,14 +489,9 @@ def patch_feature_transformation(
             metadata=meta,
         )
 
+        # OMNeT++ decide se il pacchetto viene consegnato e con quale ritardo
         is_delivered = decision.get("deliver", True)
         sim_delay = decision.get("delay_s", 0.0)
-
-        # Overlay time-varying profile: emula periodi di down/recovery sopra la latenza OMNeT++.
-        # Il ritardo rappresenta lo stato del canale e resta indipendente dalla perdita del singolo pacchetto.
-        sim_delay = max(float(sim_delay), current_phase.delay_floor_s)
-        if rng.random() < current_phase.drop_prob:
-            is_delivered = False
 
         # Calcolo del frame lag: Quanti frame indietro nel tempo dobbiamo andare
         # Lag = Ritardo (s) * Framerate (Hz)
@@ -566,11 +504,11 @@ def patch_feature_transformation(
         if not is_delivered:
             # Caso 1: Pacchetto perso -> Zeri
             final_payload = torch.zeros_like(current_payload)
-            log_msg = f"[XXX] {j} -> {agent_idx} | PACKET LOST | Delay: {sim_delay:.3f}s (channel) | phase={current_phase.name}"
+            log_msg = f"[XXX] {j} -> {agent_idx} | PACKET LOST | OMNeT++ dropped packet"
         elif frames_lag == 0:
             # Caso 2: Ritardo trascurabile -> Usa dato corrente
             final_payload = current_payload
-            log_msg = f"[OK]  {j} -> {agent_idx} | Delay: {sim_delay:.3f}s (Live) | phase={current_phase.name}"
+            log_msg = f"[OK]  {j} -> {agent_idx} | Delay: {sim_delay:.3f}s (Live)"
         else:
             # Caso 3: Ritardo significativo -> Recupera dal buffer
             buffer = feature_buffer[buffer_key]
@@ -581,12 +519,12 @@ def patch_feature_transformation(
             # Controlla se abbiamo abbastanza storia
             if abs(target_idx) <= len(buffer):
                 final_payload = buffer[target_idx]
-                log_msg = f"[OLD] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames | phase={current_phase.name}"
+                log_msg = f"[OLD] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames"
             else:
                 # Qui scegliamo di usare il più vecchio disponibile
                 final_payload = buffer[0] 
                 underflow = True
-                log_msg = f"[OLD!] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames (Buffer Underflow, using oldest) | phase={current_phase.name}"
+                log_msg = f"[OLD!] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames (Buffer Underflow, using oldest)"
 
         print(log_msg)
 
@@ -596,7 +534,6 @@ def patch_feature_transformation(
             frames_lag=int(frames_lag),
             stale=bool(is_delivered and frames_lag > 0),
             underflow=bool(underflow),
-            phase_name=current_phase.name,
         )
 
         # Creiamo una copia della matrice di comunicazione per non sporcare quella vera per altri agenti
@@ -755,23 +692,6 @@ def build_parser():
         help="Framerate of the dataset in Hz (default: 5.0). Used to calculate frame lag from network delay.",
     )
     parser.add_argument(
-        "--network_profile",
-        default="good:20:0.02:0.00,medium:25:0.08:0.03,bad:25:0.15:0.08,worst:10000:0.25:0.15",
-        type=str,
-        help=(
-            "Progressive network degradation profile as comma-separated phases: "
-            "name:frames:delay_floor_s:drop_prob "
-            "(example: good:20:0.02:0.00,medium:25:0.08:0.03,bad:25:0.15:0.08,worst:10000:0.25:0.15). "
-            "Phases progress sequentially without cycling. After all phases, stays in the last phase."
-        ),
-    )
-    parser.add_argument(
-        "--network_profile_seed",
-        default=123,
-        type=int,
-        help="Random seed for phase drop emulation (default: 123)",
-    )
-    parser.add_argument(
         "--summary_out",
         default="",
         type=str,
@@ -893,8 +813,6 @@ def main():
     run_successful = False
 
     try:
-        phases = _parse_network_profile(args.network_profile)
-
         # Inizializza il bridge solo se non è disabilitato da riga di comando
         if not args.network_disable:
             bridge = OmnetBridge(
@@ -910,8 +828,6 @@ def main():
         restore_hook, network_stats = patch_feature_transformation(
             bridge, 
             dataset_framerate=args.dataset_framerate,
-            phases=phases,
-            rng_seed=args.network_profile_seed,
         )
 
         # Inizializza il tracker Konro e patch cal_local_mAP
@@ -986,8 +902,6 @@ def main():
                         "konro_enable": bool(args.konro_enable),
                         "omnet_enable": not bool(args.network_disable),
                         "network_disable": bool(args.network_disable),
-                        "network_profile": args.network_profile,
-                        "network_profile_seed": args.network_profile_seed,
                         "dataset_framerate": args.dataset_framerate,
                     },
                     "params": {
