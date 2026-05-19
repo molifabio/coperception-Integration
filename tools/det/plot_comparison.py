@@ -14,14 +14,14 @@ Usage examples
 # Two runs in the same history file (index 0 = with Konro, index 1 = without):
   python plot_comparison.py \\
       --file  logs/ab/with_konro_with_omnet_history.json \\
-      --idx-a 0 --label-a "Con Konro" \\
-      --idx-b 1 --label-b "Senza Konro" \\
+      --idx-a 0 --label-a "With Konro" \
+      --idx-b 1 --label-b "Without Konro" \
       --out   comparison.png
 
 # Two separate history files:
-  python plot_comparison.py \\
-      --file-a logs/ab/with_konro.json   --label-a "Con Konro" \\
-      --file-b logs/ab/no_konro.json     --label-b "Senza Konro" \\
+  python plot_comparison.py \
+      --file-a logs/ab/with_konro.json   --label-a "With Konro" \
+      --file-b logs/ab/no_konro.json     --label-b "Without Konro" \
       --out    comparison.png
 """
 
@@ -105,9 +105,7 @@ def generate_comparison_plot(
         ("recall",    "Recall",     True),
         ("precision", "Precision",  True),
         ("f1",        "F1 score",   True),
-        ("num_tp",    "True Positives (num_tp)",  False),
-        ("num_gts",   "Ground Truth (num_gts)",   False),
-        ("num_dets",  "Detections (num_dets)",     False),
+        ("num_tp",    "True Positives",  False),
     ]
 
     n_panels = len(panels)
@@ -134,7 +132,7 @@ def generate_comparison_plot(
         ax.grid(axis="y", linestyle=":", linewidth=0.5, alpha=0.6)
 
     fig.suptitle(
-        f"Confronto per-frame: {label_a} vs {label_b}",
+        f"Per-frame comparison: {label_a} vs {label_b}",
         fontsize=13, fontweight="bold", y=1.005,
     )
 
@@ -186,19 +184,14 @@ def generate_pu_recall_overlay(
 
     # Left axis: PU
     COLOR_PU_A = "#1976D2"
-    COLOR_PU_B = "#7B1FA2"
     ax1.set_xlabel("Frame")
-    ax1.set_ylabel("PU allocate")
+    ax1.set_ylabel("Allocated PUs")
 
     valid_a = [p for p in pus_a if p > 0]
-    valid_b = [p for p in pus_b if p > 0]
-    all_valid = valid_a + valid_b
-    if all_valid:
+    if valid_a:
         ax1.step(frames_a, pus_a, where="post", color=COLOR_PU_A,
                  linewidth=2.0, label=f"PU — {label_a}", linestyle="-")
-        ax1.step(frames_b, pus_b, where="post", color=COLOR_PU_B,
-                 linewidth=2.0, label=f"PU — {label_b}", linestyle="--")
-        ax1.set_ylim(0, max(all_valid) + 2)
+        ax1.set_ylim(0, max(valid_a) + 2)
     ax1.tick_params(axis="y")
     ax1.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
 
@@ -218,7 +211,7 @@ def generate_pu_recall_overlay(
                     linewidth=1.0, label=f"Target ({target_quality})")
     ax2.set_ylim(0.0, 1.05)
 
-    plt.title(f"PU e Recall — {label_a} vs {label_b}")
+    plt.title(f"PUs and Recall — {label_a} vs {label_b}")
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax2.legend(lines1 + lines2, labels1 + labels2, loc="lower right", fontsize=8)
