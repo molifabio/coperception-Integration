@@ -6,6 +6,7 @@
 #include <sstream>
 #include <fstream>
 #include <vector>
+#include <unistd.h>
 
 #ifdef TIMING
 #include "timer.h"
@@ -212,14 +213,26 @@ bool CGroupControl::removeApplication(std::shared_ptr<rmcommon::App> app)
     cat_.info("CGROUPCONTROL removeApplication PID %ld: remove cgroup directory %s",
               (long)app->getPid(), cgroupAppBaseDir.c_str());
 
-
-    try {
-        rmcommon::Dir::rmdir(cgroupAppBaseDir.c_str());
-    } catch (runtime_error &e) {
-        cat_.error("CGROUPCONTROL removeApplication PID %ld: could not remove cgroup directory %s",
-                  (long)app->getPid(), cgroupAppBaseDir.c_str());
-        return false;
+    // The kernel may send the exit netlink event slightly before removing the
+    // process from cgroup.procs. Retry a few times with a short sleep to let
+    // the kernel complete its own cgroup cleanup before we attempt rmdir.
+    static const int MAX_RETRIES = 5;
+    static const int RETRY_SLEEP_US = 10000; // 10 ms
+    for (int attempt = 0; attempt <= MAX_RETRIES; ++attempt) {
+        try {
+            rmcommon::Dir::rmdir(cgroupAppBaseDir.c_str());
+            return true;    // success
+        } catch (runtime_error &) {
+            if (attempt < MAX_RETRIES) {
+                cat_.debug("CGROUPCONTROL removeApplication PID %ld: rmdir busy, retry %d/%d",
+                           (long)app->getPid(), attempt + 1, MAX_RETRIES);
+                usleep(RETRY_SLEEP_US);
+            }
+        }
     }
+    cat_.error("CGROUPCONTROL removeApplication PID %ld: could not remove cgroup directory %s",
+               (long)app->getPid(), cgroupAppBaseDir.c_str());
+    return false;
 
 #ifdef TIMING
     rmcommon::KonroTimer::TimeUnit micros = timer.Elapsed(rmcommon::KonroTimer::TIMER_RESTART);

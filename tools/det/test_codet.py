@@ -79,6 +79,18 @@ def main(args):
         validation_dataset, batch_size=1, shuffle=False, num_workers=num_workers
     )
     print("Validation dataset size:", len(validation_dataset))
+    
+    # Validate that dataset is not empty
+    if len(validation_dataset) == 0:
+        if args.scene_id is not None:
+            raise ValueError(
+                f"Validation dataset is empty! Scene ID {args.scene_id} not found in test data. "
+                f"Check available scenes with: ls {args.data}/agent0/ | cut -d'_' -f1 | sort -u"
+            )
+        else:
+            raise ValueError(
+                f"Validation dataset is empty! Check that data path exists: {args.data}"
+            )
 
     if not args.rsu:
         num_agent -= 1
@@ -211,6 +223,10 @@ def main(args):
     # for local and global mAP evaluation
     det_results_local = [[] for i in agent_idx_range]
     annotations_local = [[] for i in agent_idx_range]
+
+    # Initialize eval_start_idx before the loop to avoid UnboundLocalError
+    # when validation_data_loader is empty (e.g., when using --scene_id)
+    eval_start_idx = 1 if args.rsu else 0
 
     tracking_file = [set()] * num_agent
     for cnt, sample in enumerate(validation_data_loader):

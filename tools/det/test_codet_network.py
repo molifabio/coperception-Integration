@@ -59,14 +59,6 @@ def _append_summary_history(path: str, entry: Dict[str, Any]) -> None:
 
 
 @dataclass
-class NetworkPhase:
-    name: str
-    frames: int
-    delay_floor_s: float
-    drop_prob: float
-
-
-@dataclass
 class NetworkRuntimeStats:
     tx_total: int = 0
     delivered: int = 0
@@ -76,11 +68,9 @@ class NetworkRuntimeStats:
     stale_packets: int = 0
     underflow_packets: int = 0
     delays_s: List[float] = field(default_factory=list)
-    phase_hits: Dict[str, int] = field(default_factory=dict)
 
-    def record(self, *, delivered: bool, delay_s: float, frames_lag: int, stale: bool, underflow: bool, phase_name: str) -> None:
+    def record(self, *, delivered: bool, delay_s: float, frames_lag: int, stale: bool, underflow: bool) -> None:
         self.tx_total += 1
-        self.phase_hits[phase_name] = self.phase_hits.get(phase_name, 0) + 1
         if delivered:
             self.delivered += 1
             self.delays_s.append(max(0.0, delay_s))
@@ -124,51 +114,10 @@ class NetworkRuntimeStats:
             "latency_p50_s": p50,
             "latency_p95_s": p95,
             "latency_max_s": dmax,
-            "phase_hits": dict(sorted(self.phase_hits.items())),
         }
 
 
-def _parse_network_profile(profile: str) -> List[NetworkPhase]:
-    """
-    Parse profile format:
-    "good:120:0.02:0.00,down:60:0.40:0.15,recover:120:0.08:0.02"
-    Each phase = name:frames:delay_floor_seconds:drop_probability
-    """
-    parsed: List[NetworkPhase] = []
-    for raw_phase in profile.split(","):
-        item = raw_phase.strip()
-        if not item:
-            continue
-        parts = [p.strip() for p in item.split(":")]
-        if len(parts) != 4:
-            raise ValueError(
-                f"Invalid phase '{item}'. Expected name:frames:delay_floor_s:drop_prob"
-            )
-        name = parts[0]
-        frames = max(1, int(parts[1]))
-        delay_floor_s = max(0.0, float(parts[2]))
-        drop_prob = min(1.0, max(0.0, float(parts[3])))
-        parsed.append(NetworkPhase(name, frames, delay_floor_s, drop_prob))
 
-    if not parsed:
-        raise ValueError("Network profile is empty after parsing")
-    return parsed
-
-
-def _phase_for_frame(phases: List[NetworkPhase], frame_idx: int) -> NetworkPhase:
-    """Return the network phase for a given frame index.
-    Phases progress sequentially without cycling - once the last phase is reached, it persists."""
-    if not phases:
-        raise ValueError("phases list cannot be empty")
-    
-    acc = 0
-    for phase in phases:
-        if frame_idx < acc + phase.frames:
-            return phase
-        acc += phase.frames
-    
-    # Once all phases are completed, stay in the last phase
-    return phases[-1]
 
 
 class OmnetBridge:
@@ -412,17 +361,13 @@ class OmnetBridge:
 def patch_feature_transformation(
     bridge: Optional[OmnetBridge],
     dataset_framerate: float = 5.0,
-    phases: Optional[List[NetworkPhase]] = None,
-    rng_seed: int = 123,
 ):
     # Se non c'è un bridge attivo, non fare nulla (nessuna patch)
     if bridge is None:
         return (lambda: None), NetworkRuntimeStats()
 
     stats = NetworkRuntimeStats()
-    phases = phases or [NetworkPhase("steady", frames=10**9, delay_floor_s=0.0, drop_prob=0.0)]
     frame_counter = 0
-    rng = random.Random(rng_seed)
 
     # Salva il metodo originale per poterlo chiamare o ripristinare dopo
     descriptor = DetModelBase.__dict__["feature_transformation"]
@@ -494,8 +439,6 @@ def patch_feature_transformation(
         # Usiamo (j=1, agent_idx=0) come trigger per contare il frame, assumendo almeno 2 agenti.
         if int(b) == 0 and int(agent_idx) == 0 and int(j) == 1:
             frame_counter += 1
-        current_phase = _phase_for_frame(phases, frame_counter)
-        
         
         # Send position updates for sender (j) and receiver (agent_idx) to OMNeT++
         pos_j = _extract_position(trans_matrices, b, j)
@@ -544,14 +487,9 @@ def patch_feature_transformation(
             metadata=meta,
         )
 
+        # OMNeT++ decide se il pacchetto viene consegnato e con quale ritardo
         is_delivered = decision.get("deliver", True)
         sim_delay = decision.get("delay_s", 0.0)
-
-        # Overlay time-varying profile: emula periodi di down/recovery sopra la latenza OMNeT++.
-        # Il ritardo rappresenta lo stato del canale e resta indipendente dalla perdita del singolo pacchetto.
-        sim_delay = max(float(sim_delay), current_phase.delay_floor_s)
-        if rng.random() < current_phase.drop_prob:
-            is_delivered = False
 
         # Calcolo del frame lag: Quanti frame indietro nel tempo dobbiamo andare
         # Lag = Ritardo (s) * Framerate (Hz)
@@ -564,11 +502,11 @@ def patch_feature_transformation(
         if not is_delivered:
             # Caso 1: Pacchetto perso -> Zeri
             final_payload = torch.zeros_like(current_payload)
-            log_msg = f"[XXX] {j} -> {agent_idx} | PACKET LOST | Delay: {sim_delay:.3f}s (channel) | phase={current_phase.name}"
+            log_msg = f"[XXX] {j} -> {agent_idx} | PACKET LOST | OMNeT++ dropped packet"
         elif frames_lag == 0:
             # Caso 2: Ritardo trascurabile -> Usa dato corrente
             final_payload = current_payload
-            log_msg = f"[OK]  {j} -> {agent_idx} | Delay: {sim_delay:.3f}s (Live) | phase={current_phase.name}"
+            log_msg = f"[OK]  {j} -> {agent_idx} | Delay: {sim_delay:.3f}s (Live)"
         else:
             # Caso 3: Ritardo significativo -> Recupera dal buffer
             buffer = feature_buffer[buffer_key]
@@ -579,12 +517,12 @@ def patch_feature_transformation(
             # Controlla se abbiamo abbastanza storia
             if abs(target_idx) <= len(buffer):
                 final_payload = buffer[target_idx]
-                log_msg = f"[OLD] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames | phase={current_phase.name}"
+                log_msg = f"[OLD] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames"
             else:
                 # Qui scegliamo di usare il più vecchio disponibile
                 final_payload = buffer[0] 
                 underflow = True
-                log_msg = f"[OLD!] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames (Buffer Underflow, using oldest) | phase={current_phase.name}"
+                log_msg = f"[OLD!] {j} -> {agent_idx} | Delay: {sim_delay:.3f}s -> Lag: {frames_lag} frames (Buffer Underflow, using oldest)"
 
         print(log_msg)
 
@@ -594,7 +532,6 @@ def patch_feature_transformation(
             frames_lag=int(frames_lag),
             stale=bool(is_delivered and frames_lag > 0),
             underflow=bool(underflow),
-            phase_name=current_phase.name,
         )
 
         # Creiamo una copia della matrice di comunicazione per non sporcare quella vera per altri agenti
@@ -753,27 +690,16 @@ def build_parser():
         help="Framerate of the dataset in Hz (default: 5.0). Used to calculate frame lag from network delay.",
     )
     parser.add_argument(
-        "--network_profile",
-        default="good:20:0.02:0.00,medium:25:0.08:0.03,bad:25:0.15:0.08,worst:10000:0.25:0.15",
-        type=str,
-        help=(
-            "Progressive network degradation profile as comma-separated phases: "
-            "name:frames:delay_floor_s:drop_prob "
-            "(example: good:20:0.02:0.00,medium:25:0.08:0.03,bad:25:0.15:0.08,worst:10000:0.25:0.15). "
-            "Phases progress sequentially without cycling. After all phases, stays in the last phase."
-        ),
-    )
-    parser.add_argument(
-        "--network_profile_seed",
-        default=123,
-        type=int,
-        help="Random seed for phase drop emulation (default: 123)",
-    )
-    parser.add_argument(
         "--summary_out",
         default="",
         type=str,
         help="Optional path to a JSON summary report for run-to-run comparison",
+    )
+    parser.add_argument(
+        "--plot_out",
+        default="",
+        type=str,
+        help="Optional path (.png/.pdf) where the per-run PU+recall chart is saved",
     )
 
     # ------------------------------------------------------------------
@@ -824,8 +750,80 @@ def build_parser():
     return parser
 
 
-def patch_cal_local_mAP(
-    tracker: PerceptionProxyTracker,
+
+def _generate_run_plot(
+    frames_history: list,
+    target_quality: float,
+    konro_enabled: bool,
+    plot_path: str,
+) -> None:
+    """Generate a dual-axis chart: PU count (left) and recall (right) vs frame number."""
+    try:
+        import matplotlib  # type: ignore
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt  # type: ignore
+        import matplotlib.ticker as mticker  # type: ignore
+    except ImportError:
+        print("[Plot] matplotlib not available — skipping plot generation")
+        return
+
+    if not frames_history:
+        print("[Plot] No per-frame data available — skipping plot")
+        return
+
+    frames    = [f["frame"]     for f in frames_history]
+    recall    = [f["recall"]    for f in frames_history]
+    ema       = [f["ema"]       for f in frames_history]
+    num_pus   = [f["num_pus"]   for f in frames_history]
+
+    fig, ax1 = plt.subplots(figsize=(14, 5))
+
+    # ── Left axis: PU count ──────────────────────────────────────────
+    color_pu = "#1976D2"
+    ax1.set_xlabel("Frame")
+    ax1.set_ylabel("PU allocate", color=color_pu)
+    # Use step-plot so each allocation change is visible as a staircase
+    valid_pus = [p for p in num_pus if p > 0]
+    if valid_pus:
+        ax1.step(frames, num_pus, where="post", color=color_pu,
+                 linewidth=2.0, label="PU allocate")
+        ax1.fill_between(frames, num_pus, step="post", alpha=0.15, color=color_pu)
+        ax1.set_ylim(0, max(valid_pus) + 2)
+    else:
+        ax1.set_ylim(0, 4)
+    ax1.tick_params(axis="y", labelcolor=color_pu)
+    ax1.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+
+    # ── Right axis: recall ───────────────────────────────────────────
+    color_recall = "#E53935"
+    color_ema    = "#FB8C00"
+    ax2 = ax1.twinx()
+    ax2.set_ylabel("Recall per frame", color=color_recall)
+    ax2.plot(frames, recall, color=color_recall, linewidth=1.0, alpha=0.45, label="Recall")
+    ax2.plot(frames, ema,    color=color_ema,    linewidth=1.8, label=f"EMA recall (α={0.2})")
+    ax2.axhline(y=target_quality, color="gray", linestyle="--",
+                linewidth=1.0, label=f"Target ({target_quality})")
+    ax2.tick_params(axis="y", labelcolor=color_recall)
+    ax2.set_ylim(0.0, 1.05)
+
+    konro_label = "Konro attivo" if konro_enabled else "Konro disabilitato"
+    plt.title(f"Allocazione PU e Recall per frame — {konro_label}")
+
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax2.legend(lines1 + lines2, labels1 + labels2, loc="lower right", fontsize=8)
+
+    fig.tight_layout()
+    try:
+        plt.savefig(plot_path, dpi=150, bbox_inches="tight")
+        print(f"[Plot] Saved run chart → {plot_path}")
+    except Exception as exc:
+        print(f"[Plot] Failed to save chart: {exc}")
+    finally:
+        plt.close(fig)
+
+
+def patch_cal_local_mAP(    tracker: PerceptionProxyTracker,
     iou_thr: float = 0.5,
     target_agent_id: int = 1,
     rsu: int = 0,
@@ -891,8 +889,6 @@ def main():
     run_successful = False
 
     try:
-        phases = _parse_network_profile(args.network_profile)
-
         # Inizializza il bridge solo se non è disabilitato da riga di comando
         if not args.network_disable:
             bridge = OmnetBridge(
@@ -908,8 +904,6 @@ def main():
         restore_hook, network_stats = patch_feature_transformation(
             bridge, 
             dataset_framerate=args.dataset_framerate,
-            phases=phases,
-            rng_seed=args.network_profile_seed,
         )
 
         # Inizializza il tracker Konro e patch cal_local_mAP
@@ -942,6 +936,10 @@ def main():
         traceback.print_exc()
         run_successful = False
     finally:
+        # Stop Konro feedback first, before any cleanup, to prevent in-flight
+        # HTTP posts from arriving after Konro has already removed this PID.
+        if tracker is not None:
+            tracker.shutdown()
         # Assicura che la patch venga rimossa e il bridge chiuso anche in caso di errore
         restore_konro_hook()
         restore_hook()
@@ -984,8 +982,6 @@ def main():
                         "konro_enable": bool(args.konro_enable),
                         "omnet_enable": not bool(args.network_disable),
                         "network_disable": bool(args.network_disable),
-                        "network_profile": args.network_profile,
-                        "network_profile_seed": args.network_profile_seed,
                         "dataset_framerate": args.dataset_framerate,
                     },
                     "params": {
@@ -1011,6 +1007,14 @@ def main():
                 print(f"[Summary] Appended run report to {args.summary_out}")
             else:
                 print(f"[Summary] Test FAILED early. Skipping JSON report (empty) to avoid confusion -> {args.summary_out}")
+
+        if args.plot_out and tracker is not None:
+            _generate_run_plot(
+                frames_history=proxy_summary.get("frames_history", []),
+                target_quality=args.konro_target,
+                konro_enabled=args.konro_enable,
+                plot_path=args.plot_out,
+            )
 
         if bridge is not None:
             bridge.close()

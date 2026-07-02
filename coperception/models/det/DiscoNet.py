@@ -58,7 +58,10 @@ class DiscoNet(IntermediateModelBase):
 
         for b in range(batch_size):
             num_agent = num_agent_tensor[b, 0]
-            for i in range(num_agent):
+            # Use the actual size of local_com_mat to avoid index out of bounds
+            # when the dataset has fewer agents than declared in num_agent_tensor
+            actual_num_agent = min(int(num_agent), local_com_mat.shape[1])
+            for i in range(actual_num_agent):
                 tg_agent = local_com_mat[b, i]
                 all_warp = trans_matrices[b, i]  # transformation [2 5 5 4 4]
 
@@ -72,7 +75,7 @@ class DiscoNet(IntermediateModelBase):
                         b,
                         i,
                         all_warp,
-                        num_agent,
+                        actual_num_agent,
                         local_com_mat,
                         device,
                         size,

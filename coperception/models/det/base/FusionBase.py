@@ -39,7 +39,10 @@ class FusionBase(IntermediateModelBase):
 
         for b in range(batch_size):
             self.num_agent = num_agent_tensor[b, 0]
-            for i in range(self.num_agent):
+            # Use the actual size of local_com_mat to avoid index out of bounds
+            # when the dataset has fewer agents than declared in num_agent_tensor
+            actual_num_agent = min(int(self.num_agent), local_com_mat.shape[1])
+            for i in range(actual_num_agent):
                 self.tg_agent = local_com_mat[b, i]
                 self.neighbor_feat_list = []
                 self.neighbor_feat_list.append(self.tg_agent)
@@ -49,7 +52,7 @@ class FusionBase(IntermediateModelBase):
                     b,
                     i,
                     all_warp,
-                    self.num_agent,
+                    actual_num_agent,
                     local_com_mat,
                     device,
                     size,
