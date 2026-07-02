@@ -455,8 +455,6 @@ def patch_feature_transformation(
         if tm.ndim == 5:
             try:
                 # tm[b, 0, agent_id] is transform FROM agent_id TO agent 0
-                # Wait, usually T_i_j means "Pose of j in i's frame".
-                # So T[0, j] gives j's coordinates in 0's frame.
                 m = tm[int(b), 0, int(agent_id)]
                 if m.shape == (4, 4):
                     # Translation vector

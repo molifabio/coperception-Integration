@@ -83,11 +83,8 @@ def send_feedback_message(feedback: int) -> str:
     return _post_json("feedback", payload)
 
 
-def compute_feedback(current_value: float, target_value: float) -> int:
-    """Compute feedback in [0, 200] (equivalent to konro::computeFeedback)."""
-    if target_value <= 0:
-        return 200
-    fb = int((current_value / target_value) * 100)
+def compute_feedback(current_value: float, target_value: float = None) -> int:
+    fb = int(current_value * 200)
     return max(0, min(200, fb))
 
 

@@ -32,8 +32,8 @@ class CoperceptionPolicy : public IBasePolicy {
     std::vector<int> appsOnPu_;
 
     /// Feedback thresholds (Konro scale 0-200, target = 100)
-    static constexpr int kLowThreshold  = 90;   // below → need more resources
-    static constexpr int kHighThreshold = 110;   // above → can release resources
+    static constexpr int kLowThreshold  = 100;   // below → need more resources
+    static constexpr int kHighThreshold = 170;   // above → can release resources
 
     /// Consecutive low-feedback ticks before giving up (network-caused)
     static constexpr int kGiveUpTicks = 5;
