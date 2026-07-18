@@ -160,8 +160,15 @@ def generate_pu_recall_overlay(
     label_b: str,
     target_quality: Optional[float],
     out_path: str,
+    pu_source: str = "b",
 ) -> None:
-    """Single-panel chart: PU allocation step-plot + recall lines for both runs."""
+    """Single-panel chart: PU allocation step-plot + recall lines for both runs.
+
+    pu_source: which run's PU series to display.
+      'a'    – show PUs for run A on the left axis
+      'b'    – show PUs for run B on the left axis (default)
+      'none' – omit the PU axis entirely (recall-only chart)
+    """
     try:
         import matplotlib          # type: ignore
         matplotlib.use("Agg")
@@ -173,32 +180,44 @@ def generate_pu_recall_overlay(
 
     frames_a  = _extract(history_a, "frame")
     frames_b  = _extract(history_b, "frame")
-    pus_a     = _extract(history_a, "num_pus")
-    pus_b     = _extract(history_b, "num_pus")
     recall_a  = _extract(history_a, "recall")
     recall_b  = _extract(history_b, "recall")
     ema_a     = _extract(history_a, "ema")
     ema_b     = _extract(history_b, "ema")
 
-    fig, ax1 = plt.subplots(figsize=(14, 5))
+    show_pu = pu_source in ("a", "b")
 
-    # Left axis: PU
-    COLOR_PU_A = "#1976D2"
-    ax1.set_xlabel("Frame")
-    ax1.set_ylabel("Allocated PUs")
+    if show_pu:
+        fig, ax1 = plt.subplots(figsize=(14, 5))
+        COLOR_PU = "#1976D2"
+        ax1.set_xlabel("Frame")
+        ax1.set_ylabel("Allocated PUs")
 
-    valid_a = [p for p in pus_a if p > 0]
-    if valid_a:
-        ax1.step(frames_a, pus_a, where="post", color=COLOR_PU_A,
-                 linewidth=2.0, label=f"PU — {label_a}", linestyle="-")
-        ax1.set_ylim(0, max(valid_a) + 2)
-    ax1.tick_params(axis="y")
-    ax1.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+        if pu_source == "b":
+            pu_frames = frames_b
+            pu_vals   = _extract(history_b, "num_pus")
+            pu_label  = label_b
+        else:
+            pu_frames = frames_a
+            pu_vals   = _extract(history_a, "num_pus")
+            pu_label  = label_a
 
-    # Right axis: recall
+        valid_pu = [p for p in pu_vals if p > 0]
+        if valid_pu:
+            ax1.step(pu_frames, pu_vals, where="post", color=COLOR_PU,
+                     linewidth=2.0, label=f"PU — {pu_label}", linestyle="-")
+            ax1.set_ylim(0, max(valid_pu) + 2)
+        ax1.tick_params(axis="y")
+        ax1.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+        ax2 = ax1.twinx()
+    else:
+        fig, ax2 = plt.subplots(figsize=(14, 5))
+        ax2.set_xlabel("Frame")
+        ax1 = None
+
+    # Recall axis
     COLOR_R_A = "#E53935"
     COLOR_R_B = "#FB8C00"
-    ax2 = ax1.twinx()
     ax2.set_ylabel("Recall per frame")
     ax2.plot(frames_a, recall_a, color=COLOR_R_A, linewidth=0.9, alpha=0.35)
     ax2.plot(frames_a, ema_a,    color=COLOR_R_A, linewidth=1.6,
@@ -211,10 +230,16 @@ def generate_pu_recall_overlay(
                     linewidth=1.0, label=f"Target ({target_quality})")
     ax2.set_ylim(0.0, 1.05)
 
-    plt.title(f"PUs and Recall — {label_a} vs {label_b}")
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax2.legend(lines1 + lines2, labels1 + labels2, loc="lower right", fontsize=8)
+    chart_title = (f"PUs and Recall — {label_a} vs {label_b}" if show_pu
+                   else f"Recall — {label_a} vs {label_b}")
+    plt.title(chart_title)
+
+    if show_pu and ax1 is not None:
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax2.legend(lines1 + lines2, labels1 + labels2, loc="lower right", fontsize=8)
+    else:
+        ax2.legend(loc="lower right", fontsize=8)
 
     fig.tight_layout()
     try:
@@ -283,6 +308,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--out-overlay", default="",
         help="If set, also save a PU+recall overlay chart to this path",
     )
+    p.add_argument(
+        "--overlay-pu-source", default="b", choices=["a", "b", "none"],
+        help="Which run's PU series to show on the overlay chart left axis: "
+             "'a', 'b' (default), or 'none' to hide PUs entirely",
+    )
     return p
 
 
@@ -342,6 +372,7 @@ def main() -> None:
             args.label_a, args.label_b,
             target_quality,
             args.out_overlay,
+            pu_source=args.overlay_pu_source,
         )
 
 

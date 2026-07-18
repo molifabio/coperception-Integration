@@ -494,17 +494,25 @@ def main(args):
     )
 
     for k in range(num_agent - 1 if args.rsu else num_agent):
+        idx_05 = k * 2
+        idx_07 = k * 2 + 1
+        if idx_07 < len(mean_ap_local):
+            print_and_write_log(
+                "agent{} mAP@0.5 is {} and mAP@0.7 is {}".format(
+                    k + 1, mean_ap_local[idx_05], mean_ap_local[idx_07]
+                )
+            )
+        else:
+            print_and_write_log(
+                "agent{}: no detection results available (skipped)".format(k + 1)
+            )
+
+    if len(mean_ap_local) >= 2:
         print_and_write_log(
-            "agent{} mAP@0.5 is {} and mAP@0.7 is {}".format(
-                k + 1, mean_ap_local[k * 2], mean_ap_local[(k * 2) + 1]
+            "average local mAP@0.5 is {} and average local mAP@0.7 is {}".format(
+                mean_ap_local[-2], mean_ap_local[-1]
             )
         )
-
-    print_and_write_log(
-        "average local mAP@0.5 is {} and average local mAP@0.7 is {}".format(
-            mean_ap_local[-2], mean_ap_local[-1]
-        )
-    )
 
     if need_log:
         saver.close()
